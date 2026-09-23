@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor de Fichas de Inspección - ALAN</title>
+<style>
+  :root{
+    --rojo:#d5001c; --gris:#f2f2f2; --borde:#999; --azul:#1a5276;
+  }
+  *{box-sizing:border-box; font-family: Arial, Helvetica, sans-serif;}
+  body{margin:0; background:#e9e9e9; color:#222;}
+  header.app{background:var(--rojo); color:#fff; padding:12px 20px; display:flex; align-items:center; gap:15px; flex-wrap:wrap;}
+  header.app .logo{background:#fff; color:var(--rojo); font-weight:bold; font-style:italic; padding:6px 18px; border-radius:4px; font-size:20px;}
+  header.app h1{font-size:17px; margin:0; font-weight:normal;}
+  nav.tabs{margin-left:auto; display:flex; gap:6px;}
+  nav.tabs button{background:rgba(255,255,255,.2); border:none; color:#fff; padding:8px 16px; border-radius:4px; cursor:pointer; font-size:14px;}
+  nav.tabs button.active{background:#fff; color:var(--rojo); font-weight:bold;}
+  main{max-width:1250px; margin:20px auto; padding:0 15px 60px;}
+  .card{background:#fff; border:1px solid #ccc; border-radius:6px; padding:18px; margin-bottom:18px;}
+  .card h2{margin:0 0 12px; font-size:15px; background:var(--gris); padding:8px 10px; border-left:4px solid var(--rojo); text-transform:uppercase;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px;}
+  label{font-size:11px; font-weight:bold; text-transform:uppercase; color:#555; display:block; margin-bottom:3px;}
+  input,select,textarea{width:100%; padding:7px 8px; border:1px solid #aaa; border-radius:4px; font-size:13px;}
+  textarea{resize:vertical; min-height:60px;}
+  table.edit{width:100%; border-collapse:collapse; font-size:12px; margin-bottom:8px;}
+  table.edit th{background:var(--azul); color:#fff; padding:6px 4px; font-size:11px; text-transform:uppercase; border:1px solid #fff;}
+  table.edit td{border:1px solid #bbb; padding:3px;}
+  table.edit input{border:none; border-radius:0; font-size:12px; padding:5px;}
+  table.edit input:focus{outline:2px solid var(--rojo);}
+  .btn{background:var(--rojo); color:#fff; border:none; padding:9px 18px; border-radius:4px; cursor:pointer; font-size:14px;}
+  .btn.sec{background:#555;}
+  .btn.small{padding:4px 10px; font-size:12px;}
+  .btn.ghost{background:#fff; color:var(--rojo); border:1px solid var(--rojo);}
+  .btn.del{background:#8b0000;}
+  .row-flex{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .toolbar{margin:10px 0;}
+  /* -------- Vista consulta -------- */
+  .ficha-item{border:1px solid #ccc; border-radius:6px; padding:12px 16px; margin-bottom:10px; background:#fff; display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+  .ficha-item .info{flex:1; min-width:220px;}
+  .ficha-item .info b{font-size:15px;}
+  .ficha-item .meta{font-size:12px; color:#666;}
+  .badge{background:var(--azul); color:#fff; font-size:11px; padding:3px 8px; border-radius:10px;}
+  /* -------- Vista impresión (hoja tipo ALAN) -------- */
+  #printArea{display:none;}
+  @media print{
+    body{background:#fff;}
+    header.app, main, #consultaView, #editorView{display:none !important;}
+    #printArea{display:block !important;}
+  }
+  .sheet{border:2px solid #000; max-width:1000px; margin:0 auto; background:#fff; font-size:11px;}
+  .sheet .top{display:grid; grid-template-columns:160px 1fr 220px; border-bottom:2px solid #000;}
+  .sheet .top .cell{padding:6px; border-right:1px solid #000;}
+  .sheet .top .cell:last-child{border-right:none;}
+  .sheet .logo-cell{color:var(--rojo); font-size:26px; font-weight:bold; font-style:italic;}
+  .sheet .title-cell{text-align:center; font-weight:bold; font-size:13px; line-height:1.5;}
+  .sheet .meta-cell{font-size:10px;}
+  .sheet table{width:100%; border-collapse:collapse;}
+  .sheet td,.sheet th{border:1px solid #000; padding:4px 6px; vertical-align:top;}
+  .sheet .sec{background:#cfcfcf; text-align:center; font-weight:bold; letter-spacing:2px; font-size:12px;}
+  .sheet .sub{background:#eee; font-weight:bold; text-align:center; font-size:10px;}
+  .sheet .lbl{font-weight:bold; background:#fafafa; width:110px;}
+  .mono{font-family:Consolas,monospace; font-size:11px;}
+  .empty-msg{text-align:center; color:#777; padding:40px 0;}
+  #previewModal{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; overflow:auto; padding:20px; z-index:50;}
+  #previewModal .inner{background:#fff; max-width:1050px; margin:0 auto; padding:15px;}
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222; color:#fff; padding:10px 22px; border-radius:6px; display:none; z-index:99;}
+</style>
+</head>
+<body>
+
+<header class="app">
+  <div class="logo">alan</div>
+  <h1>QUALITY MANAGEMENT SYSTEM · SPECIFICATIONS AND INSPECTION SHEET — Editor</h1>
+  <nav class="tabs">
+    <button id="tabEditor" class="active" onclick="showView('editor')">✎ Editor</button>
+    <button id="tabConsulta" onclick="showView('consulta')">🗂 Consulta</button>
+  </nav>
+</header>
+
+<main>
+<!-- ==================== EDITOR ==================== -->
+<section id="editorView">
+  <div class="card">
+    <h2>Encabezado de la ficha</h2>
+    <div class="grid">
+      <div><label>Código de ficha</label><input id="f_codigo" placeholder="FT-SI-26"></div>
+      <div><label>Fecha de emisión</label><input id="f_emision" type="date"></div>
+      <div><label>Revisión</label><input id="f_revision" value="01"></div>
+      <div><label>Fecha de revisión</label><input id="f_fechaRev"></div>
+      <div><label>Proveedor</label><input id="f_proveedor" placeholder="EAST PLUMBING (TAIZHOU) MFG. CO., LTD."></div>
+      <div><label>Dirección</label><input id="f_direccion"></div>
+      <div><label>Teléfono</label><input id="f_tel"></div>
+      <div><label>País</label><input id="f_pais" value="CHINA"></div>
+      <div><label>Ítem / Código de producto</label><input id="f_item" placeholder="R-39-20&quot;"></div>
+      <div><label>Descripción (familia)</label><input id="f_descripcion" placeholder="CHROME PLATE STAINLESS STEEL 304 ROUND SHOWER ARM WITH FLANGE"></div>
+      <div><label>Preparado por (QA)</label><input id="f_preparado"></div>
+      <div><label>Aprobado por (Gral. Manager)</label><input id="f_aprobado"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Pruebas · Muestreo · AQL (plantilla estándar)</h2>
+    <table class="edit" id="tablaTests">
+      <thead><tr><th>Prueba</th><th>Norma de muestreo</th><th>Nivel de muestreo</th><th>AQL Crítico</th><th>AQL Mayor</th><th>AQL Menor</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="toolbar"><button class="btn small sec" onclick="addTestRow()">+ Agregar prueba</button></div>
+  </div>
+
+  <div class="card" data-section="dimensional">
+    <h2>Pruebas dimensionales — Medidas elementales</h2>
+    <table class="edit">
+      <thead><tr><th style="width:35px">Letra</th><th>Concepto</th><th>Especificación (ítem A)</th><th>Especificación (ítem B)</th><th>Equipo / Instrumento</th><th style="width:40px"></th></tr></thead>
+      <tbody class="rows"></tbody>
+    </table>
+    <div class="toolbar"><button class="btn small sec" onclick="addRow('dimensional')">+ Agregar medida</button></div>
+    <h2 style="margin-top:18px">Pesos (gramos)</h2>
+    <table class="edit">
+      <thead><tr><th>Componente</th><th>Peso (±5%)</th><th style="width:40px"></th></tr></thead>
+      <tbody class="rows" data-sub="pesos"></tbody>
+    </table>
+    <div class="toolbar"><button class="btn small sec" onclick="addRow('dimensional','pesos')">+ Agregar peso</button></div>
+  </div>
+
+  <div class="card" data-section="functional">
+    <h2>Pruebas funcionales</h2>
+    <table class="edit">
+      <thead><tr><th>Concepto</th><th>Especificaciones</th><th>Equipo</th><th>Método de prueba</th><th>Resultados</th><th>Tipo</th><th style="width:40px"></th></tr></thead>
+      <tbody class="rows"></tbody>
+    </table>
+    <div class="toolbar"><button class="btn small sec" onclick="addRow('functional')">+ Agregar prueba funcional</button></div>
+  </div>
+
+  <div class="card" data-section="material">
+    <h2>Pruebas de material</h2>
+    <table class="edit">
+      <thead><tr><th>Concepto / Parte</th><th>Especificación (aleación/material)</th><th>Equipo</th><th>Método</th><th>Resultados</th><th>Tipo</th><th style="width:40px"></th></tr></thead>
+      <tbody class="rows"></tbody>
+    </table>
+    <div class="toolbar"><button class="btn small sec" onclick="addRow('material')">+ Agregar material</button></div>
+  </div>
+
+  <div class="card" data-section="appearance">
+    <h2>Pruebas de apariencia</h2>
+    <table class="edit">
+      <thead><tr><th>Concepto / Diseño</th><th>Especificaciones</th><th>Equipo</th><th>Método de prueba</th><th>Resultados</th><th>Tipo</th><th style="width:40px"></th></tr></thead>
+      <tbody class="rows"></tbody>
+    </table>
+    <div class="toolbar"><button class="btn small sec" onclick="addRow('appearance')">+ Agregar apariencia</button></div>
+  </div>
+
+  <div class="card" data-section="artwork">
+    <h2>Arte y empaque (Artwork &amp; Packing)</h2>
+    <table class="edit">
+      <thead><tr><th>Concepto</th><th>Especificaciones</th><th>Equipo</th><th>Método de prueba</th><th>Resultados</th><th>Tipo</th><th style="width:40px"></th></tr></thead>
+      <tbody class="rows"></tbody>
+    </table>
+    <div class="toolbar"><button class="btn small sec" onclick="addRow('artwork')">+ Agregar renglón</button></div>
+    <h2 style="margin-top:18px">Observaciones / notas</h2>
+    <textarea id="f_notas" rows="3" placeholder="Notas adicionales de la inspección…"></textarea>
+  </div>
+
+  <div class="card row-flex">
+    <button class="btn" onclick="guardarFicha()">💾 Guardar ficha</button>
+    <button class="btn ghost" onclick="previsualizar()">👁 Previsualizar</button>
+    <button class="btn sec" onclick="nuevaFicha()">🗒 Nueva ficha</button>
+    <span id="editingId" class="mono"></span>
+  </div>
+</section>
+
+<!-- ==================== CONSULTA ==================== -->
+<section id="consultaView" style="display:none">
+  <div class="card row-flex">
+    <input id="buscar" placeholder="🔍 Buscar por ítem, proveedor o código…" style="flex:1; min-width:220px" oninput="renderConsulta()">
+    <button class="btn sec" onclick="exportarJSON()">⬇ Exportar respaldo (JSON)</button>
+    <button class="btn sec" onclick="document.getElementById('importFile').click()">⬆ Importar respaldo</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importarJSON(event)">
+  </div>
+  <div id="listaFichas"></div>
+</section>
+</main>
+
+<!-- ==================== PREVIEW MODAL ==================== -->
+<div id="previewModal" onclick="if(event.target===this)this.style.display='none'">
+  <div class="inner">
+    <div class="row-flex" style="margin-bottom:10px">
+      <button class="btn small" onclick="window.print()">🖨 Imprimir / PDF</button>
+      <button class="btn small sec" onclick="document.getElementById('previewModal').style.display='none'">Cerrar</button>
+    </div>
+    <div id="previewBody"></div>
+  </div>
+</div>
+
+<div id="printArea"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const LS_KEY = 'fichas_inspeccion_v1';
+let editingId = null;
+
+/* ---------- utilidades ---------- */
+const $ = id => document.getElementById(id);
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2200); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function loadAll(){ try{ return JSON.parse(localStorage.getItem(LS_KEY))||[]; }catch(e){ return []; } }
+function saveAll(d){ localStorage.setItem(LS_KEY, JSON.stringify(d)); }
+function esc(s){ return (s??'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+const DEFAULT_TESTS = [
+  ['DIMENSIONAL TEST','ISO 2859-1 (MIL STD 105E)','S-2 (SI) LEVEL I  REDUCED INSPECTION','NOT ALLOWED','1.5','2.5'],
+  ['FUNCTIONAL TEST','ISO 2859-1 (MIL STD 105E)','S-4 (SI) LEVEL I  REDUCED INSPECTION','NOT ALLOWED','1.5','2.5'],
+  ['MATERIAL TEST','ISO 2859-1 (MIL STD 105E)','S-2 (SI) LEVEL I  REDUCED INSPECTION','NOT ALLOWED','1.5','2.5'],
+  ['APPEARENCE TEST','ISO 2859-1 (MIL STD 105E)','S-2 (SI) LEVEL I  REDUCED INSPECTION','NOT ALLOWED','1.5','2.5'],
+  ['ARTWORK AND PACKING TEST','ISO 2859-1 (MIL STD 105E)','S-2 (SI) LEVEL I  REDUCED INSPECTION','NOT ALLOWED','1.5','2.5'],
+];
+
+/* ---------- filas editables ---------- */
+function addTestRow(d){
+  const tb = document.querySelector('#tablaTests tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td><input value="${esc(d?d[0]:'')}" data-c="0"></td>
+    <td><input value="${esc(d?d[1]:'ISO 2859-1 (MIL STD 105E)')}" data-c="1"></td>
+    <td><input value="${esc(d?d[2]:'S-2 (SI) LEVEL I  REDUCED INSPECTION')}" data-c="2"></td>
+    <td><input value="${esc(d?d[3]:'NOT ALLOWED')}" data-c="3"></td>
+    <td><input value="${esc(d?d[4]:'1.5')}" data-c="4"></td>
+    <td><input value="${esc(d?d[5]:'2.5')}" data-c="5"></td>
+    <td><button class="btn small del" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tb.appendChild(tr);
+}
+
+const SECTION_COLS = {
+  dimensional:  [['l','Letra'],['c','Concepto'],['sA','Esp. A'],['sB','Esp. B'],['eq','Equipo']],
+  functional:   [['c','Concepto'],['sA','Especificaciones'],['eq','Equipo'],['m','Método'],['r','Resultados'],['t','Tipo']],
+  material:     [['c','Concepto / Parte'],['sA','Especificación'],['eq','Equipo'],['m','Método'],['r','Resultados'],['t','Tipo']],
+  appearance:   [['c','Concepto / Diseño'],['sA','Especificaciones'],['eq','Equipo'],['m','Método'],['r','Resultados'],['t','Tipo']],
+  artwork:      [['c','Concepto'],['sA','Especificaciones'],['eq','Equipo'],['m','Método'],['r','Resultados'],['t','Tipo']],
+};
+function addRow(section, sub, d){
+  const card = document.querySelector(`[data-section="${section}"]`);
+  const tb = sub ? card.querySelector(`[data-sub="${sub}"]`) : card.querySelector('tbody.rows');
+  const tr = document.createElement('tr');
+  if(sub==='pesos'){
+    tr.innerHTML = `<td><input data-k="c" value="${esc(d?d.c:'')}"></td><td><input data-k="w" value="${esc(d?d.w:'')}"></td>
+      <td><button class="btn small del" onclick="this.closest('tr').remove()">✕</button></td>`;
+  } else {
+    const cols = SECTION_COLS[section];
+    tr.innerHTML = cols.map(([k])=>`<td><input data-k="${k}" value="${esc(d?d[k]:'')}"></td>`).join('')
+      + `<td><button class="btn small del" onclick="this.closest('tr').remove()">✕</button></td>`;
+  }
+  tb.appendChild(tr);
+}
+
+/* ---------- recolección de datos ---------- */
+function collectRows(sel){
+  return [...document.querySelectorAll(sel+' tr')].map(tr=>{
+    const o={};
+    tr.querySelectorAll('input').forEach(inp=>{ if(inp.dataset.k) o[inp.dataset.k]=inp.value; else if(inp.dataset.c!==undefined) o['c'+inp.dataset.c]=inp.value; });
+    return o;
+  });
+}
+function collect(){
+  return {
+    id: editingId || uid(),
+    fechaCreacion: new Date().toISOString(),
+    header:{
+      codigo:$('f_codigo').value, emision:$('f_emision').value, revision:$('f_revision').value,
+      fechaRev:$('f_fechaRev').value, proveedor:$('f_proveedor').value, direccion:$('f_direccion').value,
+      tel:$('f_tel').value, pais:$('f_pais').value, item:$('f_item').value, descripcion:$('f_descripcion').value,
+      preparado:$('f_preparado').value, aprobado:$('f_aprobado').value, notas:$('f_notas').value
+    },
+    tests: collectRows('#tablaTests tbody'),
+    dimensional: collectRows('[data-section="dimensional"] tbody.rows:not([data-sub])'),
+    pesos: collectRows('[data-sub="pesos"]'),
+    functional: collectRows('[data-section="functional"] tbody.rows'),
+    material: collectRows('[data-section="material"] tbody.rows'),
+    appearance: collectRows('[data-section="appearance"] tbody.rows'),
+    artwork: collectRows('[data-section="artwork"] tbody.rows'),
+  };
+}
+function fill(f){
+  editingId = f.id; $('editingId').textContent = 'Editando: '+f.id;
+  const h=f.header;
+  ['codigo','emision','revision','fechaRev','proveedor','direccion','tel','pais','item','descripcion','preparado','aprobado'].forEach(k=>{ $('f_'+k).value=h[k]||''; });
+  $('f_notas').value=h.notas||'';
+  document.querySelector('#tablaTests tbody').innerHTML='';
+  (f.tests&&f.tests.length?f.tests:DEFAULT_TESTS).forEach(d=>addTestRow([d.c0,d.c1,d.c2,d.c3,d.c4,d.c5]));
+  document.querySelectorAll('.card[data-section] tbody.rows').forEach(tb=>tb.innerHTML='');
+  (f.dimensional||[]).forEach(d=>addRow('dimensional',null,d));
+  (f.pesos||[]).forEach(d=>addRow('dimensional','pesos',d));
+  ['functional','material','appearance','artwork'].forEach(s=>(f[s]||[]).forEach(d=>addRow(s,null,d)));
+}
+function nuevaFicha(){
+  editingId=null; $('editingId').textContent='';
+  document.querySelectorAll('#editorView input, #editorView textarea').forEach(i=>i.value='');
+  $('f_revision').value='01'; $('f_pais').value='CHINA';
+  document.querySelector('#tablaTests tbody').innerHTML='';
+  DEFAULT_TESTS.forEach(addTestRow);
+  document.querySelectorAll('.card[data-section] tbody.rows').forEach(tb=>tb.innerHTML='');
+  addRow('dimensional'); addRow('functional'); addRow('material'); addRow('appearance'); addRow('artwork');
+  showView('editor');
+}
+function guardarFicha(){
+  const f = collect();
+  if(!f.header.item.trim()){ alert('Indica al menos el código del ítem.'); return; }
+  const all = loadAll();
+  const i = all.findIndex(x=>x.id===f.id);
+  if(i>=0) all[i]=f; else all.push(f);
+  saveAll(all); editingId=f.id; $('editingId').textContent='Editando: '+f.id;
+  toast('Ficha guardada ✔'); renderConsulta();
+}
+
+/* ---------- render de la hoja (vista tipo ALAN) ---------- */
+function sheetHTML(f){
+  const h=f.header;
+  const secTable = (title, rows, cols)=>{
+    if(!rows.length) return '';
+    let head = cols.map(c=>`<th>${c[1]}</th>`).join('');
+    let body = rows.map(r=>'<tr>'+cols.map(c=>`<td>${esc(r[c[0]]||'')}</td>`).join('')+'</tr>').join('');
+    return `<tr><td colspan="6" class="sec">${title}</td></tr>
+      <tr><td colspan="6"><table><tr class="sub">${head}</tr>${body}</table></td></tr>`;
+  };
+  const testsRows = (f.tests||[]).map(t=>`<tr><td class="lbl">${esc(t.c0)}</td><td>${esc(t.c1)}</td><td>${esc(t.c2)}</td>
+    <td>1. FOR CRITICAL DEFECTIVE &nbsp;<b>AQL= ${esc(t.c3)}</b><br>2. FOR MAYOR DEFECTIVE &nbsp;<b>AQL= ${esc(t.c4)}</b><br>3. FOR MINOR DEFECTIVE &nbsp;<b>AQL= ${esc(t.c5)}</b></td></tr>`).join('');
+  return `<div class="sheet">
+    <div class="top">
+      <div class="cell logo-cell">alan</div>
+      <div class="cell title-cell">QUALITY MANAGEMENT SYSTEM<br>ALAN DE AGUASCALIENTES, S.A. DE C.V.<br>SPECIFICATIONS AND INSPECTION SHEET</div>
+      <div class="cell meta-cell">EMISSION DATE: ${esc(h.emision)}<br>CODE: ${esc(h.codigo)}<br>REVIEW: ${esc(h.revision)} &nbsp; REVIEW DATE: ${esc(h.fechaRev)}</div>
+    </div>
+    <table>
+      <tr><td class="lbl">SUPPLIER</td><td>${esc(h.proveedor)}</td><td class="lbl">ADDRESS</td><td>${esc(h.direccion)}</td><td class="lbl">TEL</td><td>${esc(h.tel)}</td></tr>
+      <tr><td class="lbl">COUNTRY</td><td>${esc(h.pais)}</td><td class="lbl">ITEMS</td><td><b>${esc(h.item)}</b></td><td class="lbl">DESCRIPTION (FAMILY)</td><td>${esc(h.descripcion)}</td></tr>
+      <tr><td class="lbl">TESTS / SAMPLING / AQL</td><td colspan="5"><table>${testsRows}</table></td></tr>
+      ${secTable('TESTS — DIMENSIONAL', f.dimensional||[], [['l',''],['c','CONCEPT'],['sA','SPEC. A'],['sB','SPEC. B'],['eq','EQUIPMENT']])}
+      ${(f.pesos&&f.pesos.length)?`<tr><td colspan="6" class="sub">WEIGHTS (GRAMS) — TOLERANCE ±5%</td></tr>
+        <tr><td colspan="6"><table>${f.pesos.map(p=>`<tr><td class="lbl">${esc(p.c)}</td><td>${esc(p.w)}</td></tr>`).join('')}</table></td></tr>`:''}
+      ${secTable('TESTS — FUNCTIONAL', f.functional||[], SECTION_COLS.functional.map(k=>[k[0],k[1].toUpperCase()]))}
+      ${secTable('TESTS — MATERIAL', f.material||[], SECTION_COLS.material.map(k=>[k[0],k[1].toUpperCase()]))}
+      ${secTable('TESTS — APPEARANCE', f.appearance||[], SECTION_COLS.appearance.map(k=>[k[0],k[1].toUpperCase()]))}
+      ${secTable('TESTS — ARTWORK AND PACKING', f.artwork||[], SECTION_COLS.artwork.map(k=>[k[0],k[1].toUpperCase()]))}
+      ${h.notas?`<tr><td colspan="6"><b>OBSERVATIONS:</b> ${esc(h.notas)}</td></tr>`:''}
+      <tr><td class="lbl">PREPARED BY: QA</td><td>${esc(h.preparado)}</td><td colspan="2" class="lbl">REVIEWED &amp; APPROVED BY: GENERAL MANAGER</td><td colspan="2">${esc(h.aprobado)}</td></tr>
+    </table>
+  </div>`;
+}
+function previsualizar(){
+  const f=collect();
+  $('previewBody').innerHTML = sheetHTML(f);
+  $('previewModal').style.display='block';
+}
+
+/* ---------- consulta ---------- */
+function renderConsulta(){
+  const q = ($('buscar').value||'').toLowerCase();
+  const all = loadAll().filter(f=> !q || JSON.stringify(f).toLowerCase().includes(q));
+  const box = $('listaFichas');
+  if(!all.length){ box.innerHTML='<div class="card empty-msg">No hay fichas guardadas. Crea una desde el Editor.</div>'; return; }
+  box.innerHTML = all.slice().reverse().map(f=>`
+    <div class="ficha-item">
+      <span class="badge">${esc(f.header.codigo||'SIN CÓDIGO')}</span>
+      <div class="info"><b>${esc(f.header.item)}</b> — ${esc(f.header.descripcion)}<br>
+        <span class="meta">Proveedor: ${esc(f.header.proveedor)} · Creada: ${new Date(f.fechaCreacion).toLocaleString('es-MX')}</span></div>
+      <button class="btn small ghost" onclick="verFicha('${f.id}')">Ver</button>
+      <button class="btn small sec" onclick="editarFicha('${f.id}')">Editar</button>
+      <button class="btn small sec" onclick="duplicarFicha('${f.id}')">Duplicar</button>
+      <button class="btn small del" onclick="borrarFicha('${f.id}')">Borrar</button>
+    </div>`).join('');
+}
+function verFicha(id){
+  const f = loadAll().find(x=>x.id===id); if(!f) return;
+  $('previewBody').innerHTML = sheetHTML(f);
+  $('printArea').innerHTML = sheetHTML(f);
+  $('previewModal').style.display='block';
+}
+function editarFicha(id){
+  const f = loadAll().find(x=>x.id===id); if(!f) return;
+  fill(f); showView('editor');
+}
+function duplicarFicha(id){
+  const f = loadAll().find(x=>x.id===id); if(!f) return;
+  const copia = JSON.parse(JSON.stringify(f)); copia.id=uid(); copia.fechaCreacion=new Date().toISOString();
+  const all=loadAll(); all.push(copia); saveAll(all); renderConsulta(); toast('Ficha duplicada ✔');
+}
+function borrarFicha(id){
+  if(!confirm('¿Eliminar esta ficha definitivamente?')) return;
+  saveAll(loadAll().filter(x=>x.id!==id)); renderConsulta(); toast('Ficha eliminada');
+}
+function exportarJSON(){
+  const blob = new Blob([JSON.stringify(loadAll(),null,2)],{type:'application/json'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='fichas_inspeccion_respaldo.json'; a.click();
+}
+function importarJSON(ev){
+  const file = ev.target.files[0]; if(!file) return;
+  const rd = new FileReader();
+  rd.onload = e=>{
+    try{
+      const data = JSON.parse(e.target.result);
+      if(!Array.isArray(data)) throw 0;
+      const all = loadAll();
+      data.forEach(f=>{ if(f.id && !all.some(x=>x.id===f.id)) all.push(f); });
+      saveAll(all); renderConsulta(); toast('Respaldo importado ✔');
+    }catch(err){ alert('Archivo inválido.'); }
+  };
+  rd.readAsText(file); ev.target.value='';
+}
+
+/* ---------- navegación ---------- */
+function showView(v){
+  $('editorView').style.display = v==='editor'?'block':'none';
+  $('consultaView').style.display = v==='consulta'?'block':'none';
+  $('tabEditor').classList.toggle('active', v==='editor');
+  $('tabConsulta').classList.toggle('active', v==='consulta');
+  if(v==='consulta') renderConsulta();
+}
+
+/* ---------- inicio ---------- */
+DEFAULT_TESTS.forEach(addTestRow);
+addRow('dimensional'); addRow('functional'); addRow('material'); addRow('appearance'); addRow('artwork');
+renderConsulta();
+</script>
+</body>
+</html>
