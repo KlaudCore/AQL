@@ -41,11 +41,24 @@
   .ficha-item .info b{font-size:15px;}
   .ficha-item .meta{font-size:12px; color:#666;}
   .badge{background:var(--azul); color:#fff; font-size:11px; padding:3px 8px; border-radius:10px;}
+
+  /* -------- Imágenes (editor) -------- */
+  .drop-zone{border:2px dashed #bbb; border-radius:6px; padding:20px; text-align:center; color:#777; background:#fafafa; cursor:pointer;}
+  .drop-zone.hover{border-color:var(--rojo); background:#fff5f5; color:var(--rojo);}
+  .img-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; margin-top:14px;}
+  .img-item{border:1px solid #ccc; border-radius:6px; padding:8px; background:#fafafa; position:relative;}
+  .img-item img{width:100%; height:130px; object-fit:contain; background:#fff; border:1px solid #ddd; border-radius:4px; cursor:zoom-in; display:block;}
+  .img-item input{margin-top:6px; font-size:12px;}
+  .img-item .del-img{position:absolute; top:5px; right:5px; background:rgba(139,0,0,.9); color:#fff; border:none; border-radius:50%; width:24px; height:24px; cursor:pointer; font-size:12px; line-height:1;}
+  .img-item .tam{font-size:10px; color:#888; text-align:right; margin-top:3px;}
+  #lightbox{position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index:80; padding:25px; cursor:zoom-out;}
+  #lightbox img{max-width:100%; max-height:100%; background:#fff;}
+
   /* -------- Vista impresión (hoja tipo ALAN) -------- */
   #printArea{display:none;}
   @media print{
     body{background:#fff;}
-    header.app, main, #consultaView, #editorView{display:none !important;}
+    header.app, main, #consultaView, #editorView, #previewModal, #lightbox, .toast{display:none !important;}
     #printArea{display:block !important;}
   }
   .sheet{border:2px solid #000; max-width:1000px; margin:0 auto; background:#fff; font-size:11px;}
@@ -61,6 +74,11 @@
   .sheet .sub{background:#eee; font-weight:bold; text-align:center; font-size:10px;}
   .sheet .lbl{font-weight:bold; background:#fafafa; width:110px;}
   .mono{font-family:Consolas,monospace; font-size:11px;}
+  .sheet .imgs{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:8px;}
+  .sheet .imgs figure{margin:0; border:1px solid #000; padding:4px; text-align:center; break-inside:avoid; page-break-inside:avoid;}
+  .sheet .imgs img{max-width:100%; max-height:230px; object-fit:contain; display:block; margin:0 auto;}
+  .sheet .imgs figcaption{font-size:9px; margin-top:3px; font-weight:bold;}
+
   .empty-msg{text-align:center; color:#777; padding:40px 0;}
   #previewModal{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; overflow:auto; padding:20px; z-index:50;}
   #previewModal .inner{background:#fff; max-width:1050px; margin:0 auto; padding:15px;}
@@ -161,6 +179,18 @@
     <textarea id="f_notas" rows="3" placeholder="Notas adicionales de la inspección…"></textarea>
   </div>
 
+  <div class="card" data-section="imagenes">
+    <h2>Imágenes y evidencia fotográfica</h2>
+    <div class="drop-zone" id="dropZone">
+      <div style="font-size:28px; line-height:1">🖼</div>
+      <div><b>Arrastra y suelta imágenes aquí</b><br>o <u>haz clic para seleccionar archivos</u></div>
+      <div style="font-size:11px; margin-top:6px; color:#999">JPG · PNG · WEBP — se optimizan automáticamente (máx. 1200 px)</div>
+      <input type="file" id="imgInput" accept="image/*" multiple style="display:none">
+    </div>
+    <div id="imgGrid" class="img-grid"></div>
+    <div class="row-flex" style="margin-top:10px"><span id="imgInfo" class="mono" style="font-size:11px;color:#666"></span></div>
+  </div>
+
   <div class="card row-flex">
     <button class="btn" onclick="guardarFicha()">💾 Guardar ficha</button>
     <button class="btn ghost" onclick="previsualizar()">👁 Previsualizar</button>
@@ -193,19 +223,30 @@
 </div>
 
 <div id="printArea"></div>
+<div id="lightbox"><img id="lightboxImg" alt=""></div>
 <div class="toast" id="toast"></div>
 
 <script>
 const LS_KEY = 'fichas_inspeccion_v1';
 let editingId = null;
+let imagenes = [];
 
 /* ---------- utilidades ---------- */
 const $ = id => document.getElementById(id);
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2200); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function loadAll(){ try{ return JSON.parse(localStorage.getItem(LS_KEY))||[]; }catch(e){ return []; } }
-function saveAll(d){ localStorage.setItem(LS_KEY, JSON.stringify(d)); }
+function saveAll(d){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(d));
+    return true;
+  }catch(e){
+    alert('No se pudo guardar: el almacenamiento del navegador está lleno.\n\nSugerencia: elimina imágenes o fichas antiguas, o exporta un respaldo y limpia el almacenamiento.');
+    return false;
+  }
+}
 function esc(s){ return (s??'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s){ return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 const DEFAULT_TESTS = [
   ['DIMENSIONAL TEST','ISO 2859-1 (MIL STD 105E)','S-2 (SI) LEVEL I  REDUCED INSPECTION','NOT ALLOWED','1.5','2.5'],
@@ -219,12 +260,12 @@ const DEFAULT_TESTS = [
 function addTestRow(d){
   const tb = document.querySelector('#tablaTests tbody');
   const tr = document.createElement('tr');
-  tr.innerHTML = `<td><input value="${esc(d?d[0]:'')}" data-c="0"></td>
-    <td><input value="${esc(d?d[1]:'ISO 2859-1 (MIL STD 105E)')}" data-c="1"></td>
-    <td><input value="${esc(d?d[2]:'S-2 (SI) LEVEL I  REDUCED INSPECTION')}" data-c="2"></td>
-    <td><input value="${esc(d?d[3]:'NOT ALLOWED')}" data-c="3"></td>
-    <td><input value="${esc(d?d[4]:'1.5')}" data-c="4"></td>
-    <td><input value="${esc(d?d[5]:'2.5')}" data-c="5"></td>
+  tr.innerHTML = `<td><input value="${escAttr(d?d[0]:'')}" data-c="0"></td>
+    <td><input value="${escAttr(d?d[1]:'ISO 2859-1 (MIL STD 105E)')}" data-c="1"></td>
+    <td><input value="${escAttr(d?d[2]:'S-2 (SI) LEVEL I  REDUCED INSPECTION')}" data-c="2"></td>
+    <td><input value="${escAttr(d?d[3]:'NOT ALLOWED')}" data-c="3"></td>
+    <td><input value="${escAttr(d?d[4]:'1.5')}" data-c="4"></td>
+    <td><input value="${escAttr(d?d[5]:'2.5')}" data-c="5"></td>
     <td><button class="btn small del" onclick="this.closest('tr').remove()">✕</button></td>`;
   tb.appendChild(tr);
 }
@@ -241,14 +282,71 @@ function addRow(section, sub, d){
   const tb = sub ? card.querySelector(`[data-sub="${sub}"]`) : card.querySelector('tbody.rows');
   const tr = document.createElement('tr');
   if(sub==='pesos'){
-    tr.innerHTML = `<td><input data-k="c" value="${esc(d?d.c:'')}"></td><td><input data-k="w" value="${esc(d?d.w:'')}"></td>
+    tr.innerHTML = `<td><input data-k="c" value="${escAttr(d?d.c:'')}"></td><td><input data-k="w" value="${escAttr(d?d.w:'')}"></td>
       <td><button class="btn small del" onclick="this.closest('tr').remove()">✕</button></td>`;
   } else {
     const cols = SECTION_COLS[section];
-    tr.innerHTML = cols.map(([k])=>`<td><input data-k="${k}" value="${esc(d?d[k]:'')}"></td>`).join('')
+    tr.innerHTML = cols.map(([k])=>`<td><input data-k="${k}" value="${escAttr(d?d[k]:'')}"></td>`).join('')
       + `<td><button class="btn small del" onclick="this.closest('tr').remove()">✕</button></td>`;
   }
   tb.appendChild(tr);
+}
+
+/* ---------- imágenes ---------- */
+const MAX_ANCHO_IMG = 1200;
+function fmtBytes(n){ return n<1024 ? n+' B' : n<1048576 ? (n/1024).toFixed(1)+' KB' : (n/1048576).toFixed(2)+' MB'; }
+function comprimirImagen(file){
+  return new Promise((resolve,reject)=>{
+    const rd = new FileReader();
+    rd.onerror = ()=>reject(new Error('lectura'));
+    rd.onload = e=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error('formato'));
+      img.onload = ()=>{
+        let w=img.naturalWidth, h=img.naturalHeight;
+        if(w>MAX_ANCHO_IMG){ h=Math.round(h*MAX_ANCHO_IMG/w); w=MAX_ANCHO_IMG; }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        const ctx=c.getContext('2d');
+        ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);
+        ctx.drawImage(img,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg',0.82));
+      };
+      img.src = e.target.result;
+    };
+    rd.readAsDataURL(file);
+  });
+}
+async function agregarImagenes(files){
+  const lista=[...files].filter(f=>f.type.startsWith('image/'));
+  if(!lista.length){ toast('Selecciona archivos de imagen'); return; }
+  toast('Procesando imágenes…');
+  for(const file of lista){
+    try{
+      const data = await comprimirImagen(file);
+      imagenes.push({id:uid(), titulo:file.name.replace(/\.[^.]+$/,''), data});
+    }catch(err){ toast('No se pudo cargar: '+file.name); }
+  }
+  renderImagenes();
+}
+function renderImagenes(){
+  $('imgGrid').innerHTML = imagenes.map((im,i)=>`
+    <div class="img-item">
+      <button class="del-img" title="Quitar imagen" onclick="quitarImagen(${i})">✕</button>
+      <img src="${im.data}" alt="" onclick="verImagen(${i})">
+      <input value="${escAttr(im.titulo)}" placeholder="Título / descripción" oninput="imagenes[${i}].titulo=this.value">
+      <div class="tam">${fmtBytes(im.data.length)}</div>
+    </div>`).join('');
+  const total = imagenes.reduce((a,b)=>a+b.data.length,0);
+  $('imgInfo').textContent = imagenes.length ? `${imagenes.length} imagen(es) · ${fmtBytes(total)} en total` : 'Sin imágenes cargadas.';
+}
+function quitarImagen(i){
+  if(!confirm('¿Quitar esta imagen?')) return;
+  imagenes.splice(i,1); renderImagenes();
+}
+function verImagen(i){
+  const im=imagenes[i]; if(!im) return;
+  $('lightboxImg').src = im.data;
+  $('lightbox').style.display='flex';
 }
 
 /* ---------- recolección de datos ---------- */
@@ -276,6 +374,7 @@ function collect(){
     material: collectRows('[data-section="material"] tbody.rows'),
     appearance: collectRows('[data-section="appearance"] tbody.rows'),
     artwork: collectRows('[data-section="artwork"] tbody.rows'),
+    imagenes: imagenes.map(x=>({...x})),
   };
 }
 function fill(f){
@@ -289,6 +388,8 @@ function fill(f){
   (f.dimensional||[]).forEach(d=>addRow('dimensional',null,d));
   (f.pesos||[]).forEach(d=>addRow('dimensional','pesos',d));
   ['functional','material','appearance','artwork'].forEach(s=>(f[s]||[]).forEach(d=>addRow(s,null,d)));
+  imagenes = (f.imagenes||[]).map(x=>({...x}));
+  renderImagenes();
 }
 function nuevaFicha(){
   editingId=null; $('editingId').textContent='';
@@ -298,6 +399,7 @@ function nuevaFicha(){
   DEFAULT_TESTS.forEach(addTestRow);
   document.querySelectorAll('.card[data-section] tbody.rows').forEach(tb=>tb.innerHTML='');
   addRow('dimensional'); addRow('functional'); addRow('material'); addRow('appearance'); addRow('artwork');
+  imagenes=[]; renderImagenes();
   showView('editor');
 }
 function guardarFicha(){
@@ -305,8 +407,13 @@ function guardarFicha(){
   if(!f.header.item.trim()){ alert('Indica al menos el código del ítem.'); return; }
   const all = loadAll();
   const i = all.findIndex(x=>x.id===f.id);
+  const previo = i>=0 ? all[i] : null;
   if(i>=0) all[i]=f; else all.push(f);
-  saveAll(all); editingId=f.id; $('editingId').textContent='Editando: '+f.id;
+  if(!saveAll(all)){                       // se revierte si no hay espacio
+    if(previo) all[i]=previo; else all.pop();
+    return;
+  }
+  editingId=f.id; $('editingId').textContent='Editando: '+f.id;
   toast('Ficha guardada ✔'); renderConsulta();
 }
 
@@ -339,14 +446,17 @@ function sheetHTML(f){
       ${secTable('TESTS — MATERIAL', f.material||[], SECTION_COLS.material.map(k=>[k[0],k[1].toUpperCase()]))}
       ${secTable('TESTS — APPEARANCE', f.appearance||[], SECTION_COLS.appearance.map(k=>[k[0],k[1].toUpperCase()]))}
       ${secTable('TESTS — ARTWORK AND PACKING', f.artwork||[], SECTION_COLS.artwork.map(k=>[k[0],k[1].toUpperCase()]))}
+      ${(f.imagenes&&f.imagenes.length)?`<tr><td colspan="6" class="sec">IMAGES / PHOTOGRAPHIC EVIDENCE</td></tr>
+        <tr><td colspan="6"><div class="imgs">${f.imagenes.map(im=>`<figure><img src="${im.data}" alt=""><figcaption>${esc(im.titulo||'')}</figcaption></figure>`).join('')}</div></td></tr>`:''}
       ${h.notas?`<tr><td colspan="6"><b>OBSERVATIONS:</b> ${esc(h.notas)}</td></tr>`:''}
       <tr><td class="lbl">PREPARED BY: QA</td><td>${esc(h.preparado)}</td><td colspan="2" class="lbl">REVIEWED &amp; APPROVED BY: GENERAL MANAGER</td><td colspan="2">${esc(h.aprobado)}</td></tr>
     </table>
   </div>`;
 }
 function previsualizar(){
-  const f=collect();
-  $('previewBody').innerHTML = sheetHTML(f);
+  const html = sheetHTML(collect());
+  $('previewBody').innerHTML = html;
+  $('printArea').innerHTML = html;
   $('previewModal').style.display='block';
 }
 
@@ -360,7 +470,7 @@ function renderConsulta(){
     <div class="ficha-item">
       <span class="badge">${esc(f.header.codigo||'SIN CÓDIGO')}</span>
       <div class="info"><b>${esc(f.header.item)}</b> — ${esc(f.header.descripcion)}<br>
-        <span class="meta">Proveedor: ${esc(f.header.proveedor)} · Creada: ${new Date(f.fechaCreacion).toLocaleString('es-MX')}</span></div>
+        <span class="meta">Proveedor: ${esc(f.header.proveedor)} · Creada: ${new Date(f.fechaCreacion).toLocaleString('es-MX')}${(f.imagenes&&f.imagenes.length)?' · 🖼 '+f.imagenes.length:''}</span></div>
       <button class="btn small ghost" onclick="verFicha('${f.id}')">Ver</button>
       <button class="btn small sec" onclick="editarFicha('${f.id}')">Editar</button>
       <button class="btn small sec" onclick="duplicarFicha('${f.id}')">Duplicar</button>
@@ -369,8 +479,9 @@ function renderConsulta(){
 }
 function verFicha(id){
   const f = loadAll().find(x=>x.id===id); if(!f) return;
-  $('previewBody').innerHTML = sheetHTML(f);
-  $('printArea').innerHTML = sheetHTML(f);
+  const html = sheetHTML(f);
+  $('previewBody').innerHTML = html;
+  $('printArea').innerHTML = html;
   $('previewModal').style.display='block';
 }
 function editarFicha(id){
@@ -380,7 +491,9 @@ function editarFicha(id){
 function duplicarFicha(id){
   const f = loadAll().find(x=>x.id===id); if(!f) return;
   const copia = JSON.parse(JSON.stringify(f)); copia.id=uid(); copia.fechaCreacion=new Date().toISOString();
-  const all=loadAll(); all.push(copia); saveAll(all); renderConsulta(); toast('Ficha duplicada ✔');
+  const all=loadAll(); all.push(copia);
+  if(!saveAll(all)) return;
+  renderConsulta(); toast('Ficha duplicada ✔');
 }
 function borrarFicha(id){
   if(!confirm('¿Eliminar esta ficha definitivamente?')) return;
@@ -400,7 +513,8 @@ function importarJSON(ev){
       if(!Array.isArray(data)) throw 0;
       const all = loadAll();
       data.forEach(f=>{ if(f.id && !all.some(x=>x.id===f.id)) all.push(f); });
-      saveAll(all); renderConsulta(); toast('Respaldo importado ✔');
+      if(!saveAll(all)) return;
+      renderConsulta(); toast('Respaldo importado ✔');
     }catch(err){ alert('Archivo inválido.'); }
   };
   rd.readAsText(file); ev.target.value='';
@@ -419,6 +533,18 @@ function showView(v){
 DEFAULT_TESTS.forEach(addTestRow);
 addRow('dimensional'); addRow('functional'); addRow('material'); addRow('appearance'); addRow('artwork');
 renderConsulta();
+
+/* ---------- inicio imágenes ---------- */
+(function initImagenes(){
+  const dz=$('dropZone'), inp=$('imgInput');
+  dz.addEventListener('click', ()=>inp.click());
+  ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault(); dz.classList.add('hover');}));
+  ['dragleave','dragend'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault(); dz.classList.remove('hover');}));
+  dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('hover'); agregarImagenes(e.dataTransfer.files); });
+  inp.addEventListener('change', e=>{ agregarImagenes(e.target.files); e.target.value=''; });
+  $('lightbox').addEventListener('click', ()=>{ $('lightbox').style.display='none'; });
+})();
+renderImagenes();
 </script>
 </body>
 </html>
