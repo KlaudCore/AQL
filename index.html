@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AQL Sheet Generator - Quality</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="pages-container" id="pages-container"></div>
+
+<div class="bottom-actions">
+    <button class="btn btn-add-sheet" onclick="openTestModal()">➕ Add Test Sheet</button>
+    <button class="btn btn-add-sheet" style="background:#4a5568;" onclick="addBlankSheet()">📄 Blank Sheet</button>
+    <button class="btn btn-preview" onclick="openPreview()">👁️ Preview</button>
+    <button class="btn btn-print" onclick="printDocument()">🖨️ Print</button>
+    <button class="btn btn-save-pdf" id="btn-save-pdf" onclick="savePDF()">💾 Save PDF</button>
+    <button class="btn btn-project" onclick="saveProject()">📦 Save Project</button>
+    <button class="btn btn-project" style="background:#285e61;" onclick="document.getElementById('project-file-input').click()">📂 Open Project</button>
+    <input type="file" id="project-file-input" accept=".json,application/json" style="display:none" onchange="loadProject(this)">
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="test-modal">
+    <div class="modal">
+        <h3>Select Test Type</h3>
+        <p class="modal-subtitle">The header is copied automatically from the previous sheet</p>
+        <div class="test-options">
+            <div class="test-option" onclick="selectTest('DIMENSIONAL TEST')">
+                <span class="icon">📐</span> DIMENSIONAL TEST
+            </div>
+            <div class="test-option" onclick="selectTest('FUNCTIONAL TEST')">
+                <span class="icon">⚙️</span> FUNCTIONAL TEST
+            </div>
+            <div class="test-option" onclick="selectTest('MATERIAL TEST')">
+                <span class="icon">🔬</span> MATERIAL TEST
+            </div>
+            <div class="test-option" onclick="selectTest('APPEARANCE TEST')">
+                <span class="icon">👁️</span> APPEARANCE TEST
+            </div>
+            <div class="test-option" onclick="selectTest('ARTWORK AND PACKING TEST')">
+                <span class="icon">📦</span> ARTWORK AND PACKING TEST
+            </div>
+            <div class="test-option" onclick="selectTest('REVIEWS REGISTRIES')">
+                <span class="icon">📝</span> REVIEWS REGISTRIES
+            </div>
+            <div class="test-option" onclick="selectTest('ANNEX')">
+                <span class="icon">📎</span> ANNEX (auto: A, B, C…)
+            </div>
+            <div class="test-option" onclick="selectTest('APPENDIX')">
+                <span class="icon">📑</span> APPENDIX (auto: I, II, III…)
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeTestModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- VISTA PREVIA -->
+<div class="preview-overlay" id="preview-overlay">
+    <div class="preview-toolbar">
+        <h2>
+            👁️ Document Preview
+            <span class="info" id="preview-info"></span>
+        </h2>
+        <div class="preview-toolbar-actions">
+            <button class="btn-toolbar primary" onclick="printDocument()">🖨️ Print</button>
+            <button class="btn-toolbar pdf" onclick="savePDF()">💾 Save PDF</button>
+            <button class="btn-toolbar danger" onclick="closePreview()">✕ Close</button>
+        </div>
+    </div>
+    <div class="preview-content" id="preview-content"></div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
