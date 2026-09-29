@@ -1049,6 +1049,22 @@ input[type="text"].dim-section-ref:focus {
 }
 
 /* ============================================================
+   DIMENSIONAL TEST — TYPE B (todas las columnas verticales)
+   ============================================================ */
+.dim-type-b-table .dim-vertical-td {
+    background: #fafbfc;
+}
+.dim-type-b-table .vertical-item textarea {
+    font-size: 10px;
+}
+.dim-type-b-table .dim-vertical-td[data-col="spec"] .vertical-item textarea {
+    color: var(--text-main);
+}
+.dim-type-b-table .dim-vertical-td[data-col="results"] .vertical-item textarea {
+    color: var(--text-main);
+}
+
+/* ============================================================
    MATERIAL TEST — fila completa
    ============================================================ */
 .material-row > td {
@@ -1496,6 +1512,12 @@ textarea.appendix-legend-text:focus {
     .doc-footer { margin-top: 4px !important; padding-top: 3px !important; font-size: 6.5px !important; }
 
     .sheet-body, .subsection-body { overflow: visible !important; }
+
+    /* DIMENSIONAL TYPE B */
+    .dim-type-b-table .vertical-item textarea {
+        font-size: 7.5px !important;
+        padding: 0 1px !important;
+    }
 
     /* REVIEWS REGISTRIES */
     input[type="date"].reviews-date {

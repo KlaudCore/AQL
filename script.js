@@ -83,7 +83,8 @@ const HEADER_HTML = `
                     <select>
                         <option value="">-- Select --</option>
                         <option value="__ALL__">★ ALL</option>
-                        <option value="DIMENSIONAL TEST">DIMENSIONAL TEST</option>
+                        <option value="DIMENSIONAL TEST">DIMENSIONAL TEST (TYPE A)</option>
+                        <option value="DIMENSIONAL TEST (TYPE B)">DIMENSIONAL TEST (TYPE B)</option>
                         <option value="FUNCTIONAL TEST">FUNCTIONAL TEST</option>
                         <option value="MATERIAL TEST">MATERIAL TEST</option>
                         <option value="APPEARANCE TEST">APPEARANCE TEST</option>
@@ -762,6 +763,8 @@ function getTestContent(type, customTitle) {
     switch (type) {
         case 'DIMENSIONAL TEST':
             return wrap(customTitle || 'Dimensional Test', dimensionalBody());
+        case 'DIMENSIONAL TEST (TYPE B)':
+            return wrap(customTitle || 'Dimensional Test', dimensionalBodyB());
         case 'FUNCTIONAL TEST':
             return wrap(customTitle || 'Functional Test', functionalBody());
         case 'MATERIAL TEST':
@@ -784,7 +787,7 @@ function getTestContent(type, customTitle) {
 }
 
 /* ============================================================
-   DIMENSIONAL TEST
+   DIMENSIONAL TEST — TYPE A (comportamiento actual)
    ============================================================ */
 function dimensionalBody() {
     return `
@@ -914,6 +917,110 @@ function renderWeightRows() {
             </td>
         </tr>
     `).join('');
+}
+
+/* ============================================================
+   DIMENSIONAL TEST — TYPE B
+   Todas las columnas en formato vertical (listas hacia abajo):
+   CONCEPT | SPECIFICATIONS | EQUIPMENT/INSTRUMENT | TEST METHOD | RESULTS | TYPE
+   ============================================================ */
+function dimensionalBodyB() {
+    return `
+        <table class="dimensional-table dim-type-b-table" data-dim-table>
+            <thead>
+                <tr>
+                    <th style="width:18%">CONCEPT</th>
+                    <th style="width:14%">SPECIFICATIONS</th>
+                    <th style="width:13%">EQUIPMENT/INSTRUMENT</th>
+                    <th style="width:27%">TEST METHOD</th>
+                    <th style="width:23%">RESULTS</th>
+                    <th style="width:5%">TYPE</th>
+                </tr>
+            </thead>
+            <tbody class="dim-tbody">
+                <tr class="dim-functional-row dim-type-b-row">
+                    <td rowspan="1" class="dim-vertical-td" data-col="concept">
+                        <div class="vertical-list">
+                            <div class="vertical-item">
+                                <textarea rows="1">VALVE BODY TOTAL HEIGHT</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                            <div class="vertical-item">
+                                <textarea rows="1">BODY DIAMETER</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                            <div class="vertical-item">
+                                <textarea rows="1">THREAD LENGTH</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                            <div class="vertical-item">
+                                <textarea rows="1">CAP DIAMETER</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                    </td>
+                    <td rowspan="1" class="dim-vertical-td" data-col="spec">
+                        <div class="vertical-list">
+                            <div class="vertical-item">
+                                <textarea rows="1">50.94 (± 2mm)</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                            <div class="vertical-item">
+                                <textarea rows="1">32.50 (± 2mm)</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                            <div class="vertical-item">
+                                <textarea rows="1">14.00 (± 1mm)</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                            <div class="vertical-item">
+                                <textarea rows="1">45.20 (± 2mm)</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                    </td>
+                    <td rowspan="1" class="dim-vertical-td" data-col="equipment">
+                        <div class="vertical-list">
+                            <div class="vertical-item">
+                                <textarea rows="1">CALIPER</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                            <div class="vertical-item">
+                                <textarea rows="1">MICROMETER</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                    </td>
+                    <td rowspan="1" class="dim-vertical-td" data-col="method">
+                        <div class="vertical-list method-list"></div>
+                        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                        <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
+                    </td>
+                    <td rowspan="1" class="dim-vertical-td" data-col="results">
+                        <div class="vertical-list">
+                            <div class="vertical-item">
+                                <textarea rows="1">LENGTH, DIAMETERS AND HEIGHT: VALVES TOLERANCE= ± 2mm</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                    </td>
+                    <td rowspan="1" class="dim-vertical-td" data-col="type">
+                        <div class="vertical-list">
+                            <div class="vertical-item">
+                                <textarea rows="1">1</textarea>
+                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    `;
 }
 
 /* ============================================================
