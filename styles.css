@@ -978,7 +978,8 @@ input[type="text"].dim-section-ref:focus {
 .preview-content .btn-delete-page,
 .preview-content .page-placeholder,
 .preview-content .dim-add-row,
-.preview-content .btn-add-sm {
+.preview-content .btn-add-sm,
+.preview-content .appendix-legend-remove {
     display: none !important;
 }
 .preview-content input[type="text"],
@@ -1257,6 +1258,7 @@ textarea.appendix-heading:focus {
    APPENDIX — leyenda IMPORTANT
    ============================================================ */
 .appendix-legend {
+    position: relative;
     margin-top: 14px;
     padding: 10px 12px;
     border: 2px solid var(--danger);
@@ -1300,6 +1302,35 @@ textarea.appendix-legend-text:focus {
 }
 
 /* ============================================================
+   APPENDIX — botón para remover el bloque IMPORTANT
+   ============================================================ */
+.appendix-legend-remove {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--danger);
+    color: white;
+    border: 2px solid white;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-shadow: 0 2px 6px rgba(229,62,62,0.4);
+    opacity: 0;
+    transition: opacity 0.15s, transform 0.15s;
+    z-index: 2;
+}
+.appendix-legend:hover .appendix-legend-remove { opacity: 1; }
+.appendix-legend-remove:hover { background: #c53030; transform: scale(1.08); }
+
+/* ============================================================
    PRINT — LETTER PORTRAIT
    ============================================================ */
 @media print {
@@ -1320,6 +1351,7 @@ textarea.appendix-legend-text:focus {
     .img-remove, .method-file, .product-image-file,
     .dim-method-file, .annex-file, .appearance-item-file,
     .page-placeholder, .dim-add-row, .btn-add-sm,
+    .appendix-legend-remove,
     .pdf-hint {
         display: none !important;
     }

@@ -1517,7 +1517,7 @@ function removeAnnexImage(btn) {
 }
 
 /* ============================================================
-   APPENDIX — título + viñetas + leyenda IMPORTANT
+   APPENDIX — título + viñetas + leyenda IMPORTANT (removible)
    ============================================================ */
 function appendixBody() {
     return `
@@ -1533,14 +1533,51 @@ function appendixBody() {
             </ul>
             <button type="button" class="btn-add-sm" onclick="addAppendixItem(this)">+ Add</button>
 
-            <div class="appendix-legend">
-                <textarea rows="1" class="appendix-legend-title"
-                          placeholder="Legend title...">¡¡IMPORTANT!!</textarea>
-                <textarea rows="1" class="appendix-legend-text"
-                          placeholder="Legend text...">This Inspection Report not relieve the supplier from their Internal Quality System and which must be applied during the Production Process and which is quite independent of the sampling plans provided by the client.</textarea>
+            <div class="appendix-legend-wrapper">
+                ${appendixLegendHtml()}
             </div>
+            <button type="button"
+                    class="btn-add-sm appendix-add-legend-btn"
+                    style="display:none;"
+                    onclick="addAppendixLegend(this)">+ Add IMPORTANT</button>
         </div>
     `;
+}
+
+function appendixLegendHtml() {
+    return `
+        <div class="appendix-legend">
+            <button type="button"
+                    class="appendix-legend-remove"
+                    onclick="removeAppendixLegend(this)"
+                    title="Remove IMPORTANT block">×</button>
+            <textarea rows="1" class="appendix-legend-title"
+                      placeholder="Legend title...">¡¡IMPORTANT!!</textarea>
+            <textarea rows="1" class="appendix-legend-text"
+                      placeholder="Legend text...">This Inspection Report not relieve the supplier from their Internal Quality System and which must be applied during the Production Process and which is quite independent of the sampling plans provided by the client.</textarea>
+        </div>
+    `;
+}
+
+function removeAppendixLegend(btn) {
+    const legend = btn.closest('.appendix-legend');
+    if (!legend) return;
+    const body = legend.closest('.appendix-body');
+    legend.remove();
+    if (body) {
+        const addBtn = body.querySelector('.appendix-add-legend-btn');
+        if (addBtn) addBtn.style.display = '';
+    }
+}
+
+function addAppendixLegend(btn) {
+    const body = btn.closest('.appendix-body');
+    if (!body) return;
+    const wrapper = body.querySelector('.appendix-legend-wrapper');
+    if (!wrapper) return;
+    wrapper.innerHTML = appendixLegendHtml();
+    btn.style.display = 'none';
+    autoResizeAll(wrapper);
 }
 
 function appendixDefaultItems() {
