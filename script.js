@@ -22,7 +22,7 @@ const HEADER_HTML = `
                     <input type="text" value="FT-SI-00" style="width:80px; text-align:right;">
                 </div>
                 <div class="meta-row">
-                    <span class="meta-label">REVISION:</span>
+                    <span class="meta-label">REVIEW:</span>
                     <input type="text" value="01" style="width:80px; text-align:right;">
                 </div>
                 <div class="meta-row">
@@ -54,9 +54,15 @@ const HEADER_HTML = `
                     <span class="supplier-label">REVISION DATE</span>
                     <input type="text" value="DECEMBER 05TH 2016">
                 </div>
-                <div>
-                    <span class="supplier-label">ITEM</span>
-                    <input type="text" value="3900 ½”">
+                <div class="items-list-wrapper">
+                    <span class="supplier-label">ITEMS</span>
+                    <ul class="items-list">
+                        <li>
+                            <textarea rows="1">3900 ½”</textarea>
+                            <button type="button" class="btn-icon" onclick="removeHeaderItem(this)">X</button>
+                        </li>
+                    </ul>
+                    <button type="button" class="btn-add-sm" onclick="addHeaderItem(this)">+ Add</button>
                 </div>
                 <div class="span-2">
                     <span class="supplier-label">DESCRIPTION (FAMILY)</span>
@@ -83,8 +89,7 @@ const HEADER_HTML = `
                     <select>
                         <option value="">-- Select --</option>
                         <option value="__ALL__">★ ALL</option>
-                        <option value="DIMENSIONAL TEST">DIMENSIONAL TEST (TYPE A)</option>
-                        <option value="DIMENSIONAL TEST (TYPE B)">DIMENSIONAL TEST (TYPE B)</option>
+                        <option value="DIMENSIONAL TEST">DIMENSIONAL TEST</option>
                         <option value="FUNCTIONAL TEST">FUNCTIONAL TEST</option>
                         <option value="MATERIAL TEST">MATERIAL TEST</option>
                         <option value="APPEARANCE TEST">APPEARANCE TEST</option>
@@ -190,8 +195,11 @@ function captureHeaderState(page) {
         value: inp.value,
         isPages: inp.classList.contains('pages-field')
     }));
-    const supplier = [...header.querySelectorAll('.supplier-grid input, .supplier-grid textarea')]
+    const supplier = [...header.querySelectorAll('.supplier-grid input, .supplier-grid > div > textarea')]
         .map(el => el.value);
+
+    const items = [...header.querySelectorAll('.items-list li textarea')].map(ta => ta.value);
+
     const lists = [...header.querySelectorAll('.tests-columns .test-list')].map(list =>
         [...list.querySelectorAll('li')].map(li => {
             const el = li.querySelector('input[type="text"], textarea');
@@ -201,7 +209,7 @@ function captureHeaderState(page) {
     const productImg = page.querySelector('.product-image-preview img');
     const productImageSrc = productImg ? productImg.src : '';
 
-    return { titles, meta, supplier, lists, productImageSrc };
+    return { titles, meta, supplier, items, lists, productImageSrc };
 }
 
 function applyHeaderState(page, state) {
@@ -218,10 +226,24 @@ function applyHeaderState(page, state) {
         if (inp.classList.contains('pages-field')) return;
         inp.value = s.value;
     });
-    const supplierEls = [...header.querySelectorAll('.supplier-grid input, .supplier-grid textarea')];
+    const supplierEls = [...header.querySelectorAll('.supplier-grid input, .supplier-grid > div > textarea')];
     supplierEls.forEach((el, i) => {
         if (state.supplier[i] !== undefined) el.value = state.supplier[i];
     });
+
+    const itemsList = header.querySelector('.items-list');
+    if (itemsList && Array.isArray(state.items)) {
+        itemsList.innerHTML = '';
+        state.items.forEach(v => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <textarea rows="1">${escapeHtml(v)}</textarea>
+                <button type="button" class="btn-icon" onclick="removeHeaderItem(this)">X</button>
+            `;
+            itemsList.appendChild(li);
+        });
+    }
+
     header.querySelectorAll('.tests-columns .test-list').forEach((list, li) => {
         const values = state.lists[li] || [];
         list.innerHTML = '';
@@ -282,6 +304,17 @@ function init() {
     });
 
     document.addEventListener('input', (e) => {
+        if (e.target.classList && e.target.classList.contains('dim-section-spec-name')) {
+            const table = e.target.closest('.dimensional-table');
+            const row   = e.target.closest('tr');
+            if (table && row) {
+                const idx = [...row.querySelectorAll('.dim-section-spec-name')].indexOf(e.target);
+                table.querySelectorAll('tr').forEach(tr => {
+                    const el = tr.querySelectorAll('.dim-section-spec-name')[idx];
+                    if (el && el !== e.target) el.value = e.target.value;
+                });
+            }
+        }
         if (e.target.classList && e.target.classList.contains('dim-weight-value')) {
             const table = e.target.closest('.dimensional-table');
             if (table) recalcTotalWeight(table);
@@ -306,7 +339,7 @@ function printDocument() {
 }
 
 /* ============================================================
-   SAVE PDF (VECTORIAL — vía motor de impresión nativo)
+   SAVE PDF
    ============================================================ */
 function savePDF() {
     const previewOverlay = document.getElementById('preview-overlay');
@@ -430,12 +463,46 @@ function loadProject(input) {
             container.querySelectorAll('.dim-spec-image-td').forEach(td => td.remove());
             container.querySelectorAll('.dim-extra-td').forEach(td => td.remove());
 
+            /* Migrar APPENDIX antiguos (sin .appendix-section) al nuevo formato */
+            container.querySelectorAll('.appendix-body').forEach(body => {
+                if (body.querySelector('.appendix-section')) return;
+                const heading = body.querySelector('.appendix-heading');
+                const list = body.querySelector('.appendix-list');
+                if (!heading || !list) return;
+
+                const title = heading.value || 'PRODUCT';
+                const items = [...list.querySelectorAll('li textarea')].map(t => t.value);
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'appendix-sections';
+                wrapper.innerHTML = appendixSectionHtml(title, items).trim();
+
+                const legendWrapper = body.querySelector('.appendix-legend-wrapper');
+                const oldAddBtn = [...body.children].find(el =>
+                    el.tagName === 'BUTTON' && el.textContent.trim().startsWith('+ Add')
+                );
+                heading.remove();
+                list.remove();
+                if (oldAddBtn) oldAddBtn.remove();
+
+                body.insertBefore(wrapper, legendWrapper || body.firstChild);
+
+                const newAddBtn = document.createElement('button');
+                newAddBtn.type = 'button';
+                newAddBtn.className = 'btn-add-sm appendix-add-section-btn';
+                newAddBtn.textContent = '+ Add section';
+                newAddBtn.setAttribute('onclick', 'addAppendixSection(this)');
+                body.insertBefore(newAddBtn, legendWrapper || null);
+            });
+
             updatePageNumbers();
             updateAllBlankStatus();
 
             container.querySelectorAll('.dimensional-table').forEach(t => {
                 updateDimRowspans(t);
                 recalcTotalWeight(t);
+                refreshSpecRemoveButtons(t);
+                refreshSpecColumnWidths(t);
             });
 
             autoResizeAll(container);
@@ -484,6 +551,29 @@ function removeProductImage(btn) {
     if (fileInput) fileInput.value = '';
     const btnUpload = section.querySelector('.btn-img-lg');
     if (btnUpload) btnUpload.style.display = '';
+}
+
+/* ============================================================
+   HEADER — ITEMS (listado vertical)
+   ============================================================ */
+function addHeaderItem(btn) {
+    const wrapper = btn.closest('.items-list-wrapper');
+    if (!wrapper) return;
+    const list = wrapper.querySelector('.items-list');
+    const li = document.createElement('li');
+    li.innerHTML = `
+        <textarea rows="1" placeholder="Item..."></textarea>
+        <button type="button" class="btn-icon" onclick="removeHeaderItem(this)">X</button>
+    `;
+    list.appendChild(li);
+    autoResizeAll(li);
+    const ta = li.querySelector('textarea');
+    if (ta) ta.focus();
+}
+
+function removeHeaderItem(btn) {
+    const li = btn.closest('li');
+    if (li) li.remove();
 }
 
 /* ============================================================
@@ -574,7 +664,6 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-/* Bloquea Enter en el título editable (ANNEX / APPENDIX) */
 document.addEventListener('keydown', (e) => {
     const el = e.target;
     if (el && el.classList && el.classList.contains('sheet-title-editable') && e.key === 'Enter') {
@@ -678,6 +767,8 @@ function selectTest(type) {
     targetPage.querySelectorAll('.dimensional-table').forEach(table => {
         updateDimRowspans(table);
         recalcTotalWeight(table);
+        refreshSpecRemoveButtons(table);
+        refreshSpecColumnWidths(table);
     });
 
     closeTestModal();
@@ -787,15 +878,72 @@ function getTestContent(type, customTitle) {
 }
 
 /* ============================================================
-   DIMENSIONAL TEST — TYPE A (comportamiento actual)
+   DIMENSIONAL TEST — TYPE A
    ============================================================ */
-function dimensionalBody() {
+function escapeAttr(str) {
+    return escapeHtml(str).replace(/"/g, '&quot;');
+}
+
+const DIM_DEFAULT_MODEL = 'R-39-15"';
+
+function dimSpecNameCells(names) {
+    return names.map(n => `
+        <td class="dim-section-spec-td">
+            <input type="text" class="dim-section-spec-name" value="${escapeAttr(n)}" placeholder="Model">
+        </td>`).join('');
+}
+
+/* Fila de datos genérica (concepto + una celda por columna SPECIFICATIONS) */
+function dimDataRowHtml(section, concept, specs, indexLetter) {
+    const isWeights = section === 'weights';
+    const indexCell = (indexLetter !== null && indexLetter !== undefined)
+        ? `<input type="text" class="dim-index" value="${escapeAttr(indexLetter)}" maxlength="3">`
+        : `<span class="dim-index-spacer"></span>`;
+    const specCells = specs.map(v => `
+            <td class="dim-spec-td">
+                <textarea rows="1" class="dim-spec-input${isWeights ? ' dim-weight-value' : ''}">${escapeHtml(v)}</textarea>
+            </td>`).join('');
     return `
-        <table class="dimensional-table" data-dim-table>
+        <tr class="dim-data-row" data-section="${section}" data-block="${section}">
+            <td class="dim-concept-td">
+                <div class="dim-row-content">
+                    ${indexCell}
+                    <textarea rows="1" class="dim-concept-input">${escapeHtml(concept)}</textarea>
+                </div>
+                <button type="button" class="btn-icon dim-row-remove" onclick="removeDimDataRow(this)" title="Delete row">X</button>
+            </td>
+            ${specCells}
+        </tr>`;
+}
+
+/* Bloque removable: cabecera (título editable + nombres de modelo) + filas + "add row" */
+function dimBlockHtml(id, title, names, rows) {
+    return `
+        <tr class="dim-section-row dim-block-header" data-block="${id}">
+            <td class="dim-section-title">
+                <div class="dim-block-title-wrap">
+                    <input type="text" class="dim-section-name" value="${escapeAttr(title)}" placeholder="Section title">
+                    <button type="button" class="btn-icon dim-block-remove" onclick="removeDimSection(this)" title="Remove this section">X</button>
+                </div>
+            </td>
+            ${dimSpecNameCells(names)}
+        </tr>
+        ${rows.map(r => dimDataRowHtml(id, r[0], r.slice(1), null)).join('')}
+        <tr class="dim-add-row" data-block="${id}">
+            <td colspan="${1 + names.length}">
+                <button type="button" class="btn-add-sm" onclick="addDimDataRow(this, '${id}')">+ Add row</button>
+            </td>
+        </tr>`;
+}
+
+function dimensionalBody() {
+    const names = [DIM_DEFAULT_MODEL];
+    return `
+        <table class="dimensional-table dim-type-a-table" data-dim-table>
             <thead>
                 <tr>
                     <th style="width:20%">CONCEPT</th>
-                    <th style="width:8%">SPECIFICATIONS</th>
+                    <th class="dim-spec-th" style="width:10%">${specThInnerHtml()}</th>
                     <th style="width:13%">EQUIPMENT/INSTRUMENT</th>
                     <th style="width:30%">TEST METHOD</th>
                     <th style="width:20%">RESULTS</th>
@@ -803,13 +951,13 @@ function dimensionalBody() {
                 </tr>
             </thead>
             <tbody class="dim-tbody">
-                <tr class="dim-section-row">
-                    <td colspan="2" class="dim-section-title">
+                <tr class="dim-section-row dim-block-header" data-block="elementary">
+                    <td class="dim-section-title">
                         <div class="dim-section-header">
                             <span>ELEMENTARY MEASURES</span>
-                            <input type="text" class="dim-section-ref" value='(3900 ½")' placeholder="(item ref)">
                         </div>
                     </td>
+                    ${dimSpecNameCells(names)}
                     <td rowspan="1" class="dim-vertical-td" data-col="equipment">
                         <div class="vertical-list">
                             <div class="vertical-item">
@@ -818,6 +966,9 @@ function dimensionalBody() {
                             </div>
                         </div>
                         <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                        <div class="vertical-list method-list equipment-img-list"></div>
+                        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                        <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
                     </td>
                     <td rowspan="1" class="dim-vertical-td" data-col="method">
                         <div class="vertical-list method-list"></div>
@@ -832,6 +983,9 @@ function dimensionalBody() {
                             </div>
                         </div>
                         <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                        <div class="vertical-list method-list results-img-list"></div>
+                        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                        <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
                     </td>
                     <td rowspan="1" class="dim-vertical-td" data-col="type">
                         <div class="vertical-list">
@@ -844,26 +998,15 @@ function dimensionalBody() {
                     </td>
                 </tr>
                 ${renderElementaryRows()}
-                <tr class="dim-add-row">
+                <tr class="dim-add-row" data-block="elementary">
                     <td colspan="2">
                         <button type="button" class="btn-add-sm" onclick="addDimDataRow(this, 'elementary')">+ Add row</button>
                     </td>
                 </tr>
 
-                <tr class="dim-section-row">
-                    <td colspan="2" class="dim-section-title">
-                        <div class="dim-section-header">
-                            <span>WEIGHTS (GRAMS)</span>
-                            <input type="text" class="dim-section-ref" value='(3900 ½")' placeholder="(item ref)">
-                        </div>
-                    </td>
-                </tr>
-                ${renderWeightRows()}
-                <tr class="dim-add-row">
-                    <td colspan="2">
-                        <button type="button" class="btn-add-sm" onclick="addDimDataRow(this, 'weights')">+ Add row</button>
-                    </td>
-                </tr>
+                ${dimBlockHtml('weights', 'WEIGHTS (GRAMS)', names, [
+                    ['SHOWER ARM', '205 (± 5%)'],
+                ])}
 
                 <tr class="dim-section-row">
                     <td colspan="2" class="dim-section-title">TOTAL WEIGHT (GRAMS)</td>
@@ -874,6 +1017,25 @@ function dimensionalBody() {
                         <textarea rows="1" class="dim-spec-input dim-total-weight" readonly>0.00 (± 5%)</textarea>
                     </td>
                 </tr>
+
+                <!-- 👇 Fila espaciadora en blanco (igual a + Add row pero sin botón) -->
+                <tr class="dim-add-row dim-spacer-row">
+                    <td colspan="2"></td>
+                </tr>
+
+                ${dimBlockHtml('threads', 'TYPE OF THREADS', names, [
+                    ['END THREAD 1', '½-14-N.P.T'],
+                ])}
+
+                ${dimBlockHtml('thickness', 'THICKNESS', names, [
+                    ['SHOWER ARM', '0.054" (± 0.000")'],
+                ])}
+
+                <tr class="dim-add-row dim-add-section-row">
+                    <td colspan="2">
+                        <button type="button" class="btn-add-sm" onclick="addDimSection(this)">+ Add section</button>
+                    </td>
+                </tr>
             </tbody>
         </table>
     `;
@@ -881,48 +1043,50 @@ function dimensionalBody() {
 
 function renderElementaryRows() {
     const data = [
-        ['A', 'VALVE BODY TOTAL HEIGHT', '50.94 (± 2mm)'],
+        ['A', 'SHOWER ARM LENGTH',    '4.250" (± 0.080")'],
     ];
-    return data.map(r => `
-        <tr class="dim-data-row" data-section="elementary">
-            <td class="dim-concept-td">
-                <div class="dim-row-content">
-                    <input type="text" class="dim-index" value="${r[0]}" maxlength="3">
-                    <textarea rows="1" class="dim-concept-input">${escapeHtml(r[1])}</textarea>
-                </div>
-                <button type="button" class="btn-icon dim-row-remove" onclick="removeDimDataRow(this)" title="Delete row">X</button>
-            </td>
-            <td class="dim-spec-td">
-                <textarea rows="1" class="dim-spec-input">${escapeHtml(r[2])}</textarea>
-            </td>
-        </tr>
-    `).join('');
+    return data.map(r => dimDataRowHtml('elementary', r[1], [r[2]], r[0])).join('');
 }
 
-function renderWeightRows() {
-    const data = [
-        ['CAP', '36.00 (± 5%)'],
-    ];
-    return data.map(r => `
-        <tr class="dim-data-row" data-section="weights">
-            <td class="dim-concept-td">
-                <div class="dim-row-content">
-                    <span class="dim-index-spacer"></span>
-                    <textarea rows="1" class="dim-concept-input">${escapeHtml(r[0])}</textarea>
-                </div>
-                <button type="button" class="btn-icon dim-row-remove" onclick="removeDimDataRow(this)" title="Delete row">X</button>
-            </td>
-            <td class="dim-spec-td">
-                <textarea rows="1" class="dim-spec-input dim-weight-value">${escapeHtml(r[1])}</textarea>
-            </td>
-        </tr>
-    `).join('');
+/* Quita un bloque completo (cabecera + filas + "add row") */
+function removeDimSection(btn) {
+    const header = btn.closest('tr');
+    const table  = header.closest('.dimensional-table');
+    const block  = header.dataset.block;
+    if (!table || !block) return;
+    table.querySelectorAll('tr[data-block]').forEach(tr => {
+        if (tr.dataset.block === block) tr.remove();
+    });
+    updateDimRowspans(table);
+    recalcTotalWeight(table);
+}
+
+/* Añade una sección nueva con título editable */
+function addDimSection(btn) {
+    const table  = btn.closest('.dimensional-table');
+    const addRow = btn.closest('tr');
+    const tbody  = table.querySelector('.dim-tbody');
+    const specCount = table.querySelectorAll('.dim-spec-th').length || 1;
+
+    const firstNames = [...table.querySelectorAll('.dim-block-header')[0]
+        ?.querySelectorAll('.dim-section-spec-name') || []].map(i => i.value);
+    const names = [];
+    for (let i = 0; i < specCount; i++) names.push(firstNames[i] || '');
+
+    const id = 'sec-' + Date.now().toString(36);
+    const tmp = document.createElement('tbody');
+    tmp.innerHTML = dimBlockHtml(id, 'NEW SECTION', names, []);
+    [...tmp.children].forEach(tr => tbody.insertBefore(tr, addRow));
+
+    const blockAddBtn = tbody.querySelector(`tr.dim-add-row[data-block="${id}"] .btn-add-sm`);
+    if (blockAddBtn) addDimDataRow(blockAddBtn, id);
+    updateDimRowspans(table);
+    const title = tbody.querySelector(`tr[data-block="${id}"] .dim-section-name`);
+    if (title) { title.focus(); title.select(); }
 }
 
 /* ============================================================
    DIMENSIONAL TEST — TYPE B
-   Todas las columnas en formato vertical (listas hacia abajo):
-   CONCEPT | SPECIFICATIONS | EQUIPMENT/INSTRUMENT | TEST METHOD | RESULTS | TYPE
    ============================================================ */
 function dimensionalBodyB() {
     return `
@@ -930,7 +1094,7 @@ function dimensionalBodyB() {
             <thead>
                 <tr>
                     <th style="width:18%">CONCEPT</th>
-                    <th style="width:14%">SPECIFICATIONS</th>
+                    <th class="dim-spec-th" style="width:14%">${specThInnerHtml()}</th>
                     <th style="width:13%">EQUIPMENT/INSTRUMENT</th>
                     <th style="width:27%">TEST METHOD</th>
                     <th style="width:23%">RESULTS</th>
@@ -945,18 +1109,6 @@ function dimensionalBodyB() {
                                 <textarea rows="1">VALVE BODY TOTAL HEIGHT</textarea>
                                 <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
                             </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">BODY DIAMETER</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">THREAD LENGTH</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">CAP DIAMETER</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
                         </div>
                         <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
                     </td>
@@ -964,18 +1116,6 @@ function dimensionalBodyB() {
                         <div class="vertical-list">
                             <div class="vertical-item">
                                 <textarea rows="1">50.94 (± 2mm)</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">32.50 (± 2mm)</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">14.00 (± 1mm)</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">45.20 (± 2mm)</textarea>
                                 <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
                             </div>
                         </div>
@@ -987,10 +1127,7 @@ function dimensionalBodyB() {
                                 <textarea rows="1">CALIPER</textarea>
                                 <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
                             </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">MICROMETER</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
+    
                         </div>
                         <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
                     </td>
@@ -1026,74 +1163,136 @@ function dimensionalBodyB() {
 /* ============================================================
    FUNCTIONAL TEST
    ============================================================ */
+/* Helper — construye una fila completa del Functional Test */
+function functionalRowHtml(data = {}) {
+    const concept   = data.concept   || '';
+    const equipment = data.equipment || '';
+    const type      = data.type      || '1';
+    const specs     = data.specs     || [''];
+    const methods   = data.methods   || [''];
+    const results   = data.results   || [''];
+    const methodImage = !!data.methodImage; // true → agrega 📷 Add image en TEST METHOD
+
+    const specHtml = specs.map(v => `
+        <div class="vertical-item">
+            <textarea rows="1">${escapeHtml(v)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+        </div>`).join('');
+
+    const methodHtml = methods.map(v => `
+        <div class="vertical-item method-item">
+            <span class="method-num"></span>
+            <textarea rows="1">${escapeHtml(v)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+        </div>`).join('');
+
+    const resultHtml = results.map(v => `
+        <div class="vertical-item">
+            <textarea rows="1">${escapeHtml(v)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+        </div>`).join('');
+
+    return `
+        <tr class="dim-functional-row">
+            <td rowspan="1" class="dim-vertical-td" data-col="concept">
+                <!-- 👇 Delete row — esquina superior derecha, ARRIBA del delete del CONCEPT -->
+                <button type="button" class="btn-icon dim-func-row-remove" onclick="removeFunctionalRow(this)" title="Delete row">X</button>
+
+                <div class="vertical-list">
+                    <div class="vertical-item">
+                        <textarea rows="1">${escapeHtml(concept)}</textarea>
+                        <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                    </div>
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="spec">
+                <div class="vertical-list">${specHtml}</div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                <div class="vertical-list method-list spec-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="equipment">
+                <div class="vertical-list">
+                    <div class="vertical-item">
+                        <textarea rows="1">${escapeHtml(equipment)}</textarea>
+                        <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                    </div>
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                <div class="vertical-list method-list equipment-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="method">
+                <div class="vertical-list method-numbered-list">${methodHtml}</div>
+                <button type="button" class="btn-add-sm" onclick="addMethodItem(this)">+ Add</button>
+                ${methodImage ? `
+                <div class="vertical-list method-list method-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">` : ''}
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="results">
+                <div class="vertical-list">${resultHtml}</div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="type">
+                <div class="vertical-list">
+                    <div class="vertical-item">
+                        <textarea rows="1">${escapeHtml(type)}</textarea>
+                        <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                    </div>
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+            </td>
+        </tr>
+    `;
+}
+
 function functionalBody() {
     return `
-        <table class="dimensional-table" data-dim-table>
+        <table class="dimensional-table functional-table" data-dim-table data-functional-table>
             <thead>
                 <tr>
-                    <th style="width:18%">CONCEPT</th>
-                    <th style="width:40%">TEST METHOD</th>
-                    <th style="width:28%">RESULTS</th>
-                    <th style="width:4%">TYPE</th>
+                    <th style="width:13%">CONCEPT</th>
+                    <th class="dim-spec-th" style="width:18%">${specThInnerHtml()}</th>
+                    <th style="width:13%">EQUIPMENT/INSTRUMENT</th>
+                    <th style="width:20%">TEST METHOD</th>
+                    <th style="width:21%">RESULTS</th>
+                    <th style="width:5%">TYPE</th>
                 </tr>
             </thead>
             <tbody class="dim-tbody">
-                <tr class="dim-functional-row">
-                    <td rowspan="1" class="dim-vertical-td" data-col="concept">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">OPENING PRESSURE</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">CLOSING PRESSURE</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">SEALING TEST</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">OPERATION TEST</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="method">
-                        <div class="vertical-list method-list"></div>
-                        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
-                        <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="results">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">OPENING PRESSURE WITHIN SPEC (± 0.1 MPa)</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">CLOSING PRESSURE WITHIN SPEC (± 0.1 MPa)</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">NO LEAKS UNDER TEST PRESSURE</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">SMOOTH OPERATION, NO JAMMING</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="type">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">1</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                ${functionalRowHtml({
+                    concept:   'ASSEMBLE',
+                    specs:     ['ASSEMBLE: SHOWER ARM AN FLANGE'],
+                    equipment: 'NONE',
+                    methods: [
+                        'THE SAMPLES MUST BE FREE OF BURRS.',
+                    ],
+                    results: [
+                        'ALL THE COMPONENTS (SHOWER ARM AND FLANGE) MUST ASSEMBLE CORRECTLY.',
+                    ],
+                    type: '1'
+                })}
+
+                ${functionalRowHtml({
+                    concept:   'TIGHTENING RESISTENCE IN THE CONNECTIONS (THREADS)',
+                    specs:     ['TO APPLY: THREADS 5.0 N·m (0.5 kg·m)'],
+                    equipment: 'TORQUE METER',
+                    methods: [
+                        'THE SAMPLES MUST BE FREE OF BURRS.',
+                    ],
+                    results: [
+                        'THE SHOWER ARM MUST NOT HAVE CRACKS, FISSURES, LOW THREADS OR ANY OTHER DEFORMATION WHEN ARE SUBJECTED TO THIS TEST'
+                    ],
+                    type: '1'
+                })}
+
+                <tr class="dim-add-row">
+                    <td colspan="6">
+                        <button type="button" class="btn-add-sm" onclick="addFunctionalRow(this)">+ Add row</button>
                     </td>
                 </tr>
             </tbody>
@@ -1101,8 +1300,37 @@ function functionalBody() {
     `;
 }
 
+function addFunctionalRow(btn) {
+    const table  = btn.closest('.dimensional-table');
+    const tbody  = table.querySelector('.dim-tbody');
+    const addRow = btn.closest('tr');
+
+    const tmp = document.createElement('tbody');
+    tmp.innerHTML = functionalRowHtml({ methodImage: table.classList.contains('appearance-table') }).trim();
+    const newRow = tmp.firstElementChild;
+    tbody.insertBefore(newRow, addRow);
+
+    autoResizeAll(newRow);
+    const firstInput = newRow.querySelector('.dim-vertical-td[data-col="concept"] textarea');
+    if (firstInput) firstInput.focus();
+}
+
+function removeFunctionalRow(btn) {
+    const row = btn.closest('tr.dim-functional-row');
+    if (!row) return;
+    const tbody = row.closest('tbody');
+    row.remove();
+    if (tbody && !tbody.querySelector('.dim-functional-row')) {
+        const addRow = tbody.querySelector('.dim-add-row');
+        const tmp = document.createElement('tbody');
+        const tbl = tbody.closest('table');
+        tmp.innerHTML = functionalRowHtml({ methodImage: !!tbl && tbl.classList.contains('appearance-table') }).trim();
+        tbody.insertBefore(tmp.firstElementChild, addRow);
+    }
+}
+
 /* ============================================================
-   MATERIAL TEST — SOLO TEXTO
+   MATERIAL TEST
    ============================================================ */
 function materialBody() {
     return `
@@ -1110,7 +1338,7 @@ function materialBody() {
             <thead>
                 <tr>
                     <th style="width:18%">CONCEPT</th>
-                    <th style="width:15%">SPECIFICATIONS</th>
+                    <th class="dim-spec-th" style="width:15%">${specThInnerHtml()}</th>
                     <th style="width:15%">EQUIPMENT/INSTRUMENT</th>
                     <th style="width:22%">TEST METHOD</th>
                     <th style="width:25%">RESULTS</th>
@@ -1183,12 +1411,36 @@ function renderMaterialRow(data) {
 }
 
 function addMaterialRow(btn) {
-    const tbody = btn.closest('.material-tbody');
+    const table  = btn.closest('.dimensional-table');
+    const tbody  = table.querySelector('.material-tbody');
     const addRow = btn.closest('tr');
+
+    const specCount = table.querySelectorAll('.dim-spec-th').length || 1;
 
     const newRow = document.createElement('tr');
     newRow.className = 'material-row';
-    newRow.innerHTML = renderMaterialRow({}).trim();
+
+    const conceptCell = `
+        <td class="material-concept-td dim-concept-td">
+            <textarea rows="1" class="dim-concept-input material-text" placeholder="Concept..."></textarea>
+            <button type="button" class="btn-icon dim-row-remove" onclick="removeMaterialRow(this)" title="Delete row">X</button>
+        </td>`;
+
+    let specCells = '';
+    for (let i = 0; i < specCount; i++) {
+        specCells += `<td class="material-text-td">
+            <textarea rows="1" class="dim-spec-input material-text" placeholder="Specification..."></textarea>
+        </td>`;
+    }
+
+    const restCells = `
+        <td class="material-text-td"><textarea rows="1" class="dim-spec-input material-text" placeholder="Equipment..."></textarea></td>
+        <td class="material-text-td"><textarea rows="1" class="dim-spec-input material-text" placeholder="Test method..."></textarea></td>
+        <td class="material-text-td"><textarea rows="1" class="dim-spec-input material-text" placeholder="Results..."></textarea></td>
+        <td class="material-text-td"><textarea rows="1" class="dim-spec-input material-text" placeholder="Type...">1</textarea></td>
+    `;
+
+    newRow.innerHTML = conceptCell + specCells + restCells;
 
     tbody.insertBefore(newRow, addRow);
     autoResizeAll(newRow);
@@ -1206,99 +1458,36 @@ function removeMaterialRow(btn) {
    ============================================================ */
 function appearanceBody() {
     return `
-        <table class="dimensional-table appearance-table" data-dim-table>
+        <table class="dimensional-table functional-table appearance-table" data-dim-table data-functional-table>
             <thead>
                 <tr>
-                    <th style="width:20%">CONCEPT</th>
-                    <th style="width:15%">SPECIFICATIONS</th>
-                    <th style="width:15%">EQUIPMENT/INSTRUMENT</th>
-                    <th style="width:25%">TEST METHOD</th>
-                    <th style="width:20%">RESULTS</th>
+                    <th style="width:13%">CONCEPT</th>
+                    <th class="dim-spec-th" style="width:18%">${specThInnerHtml()}</th>
+                    <th style="width:13%">EQUIPMENT/INSTRUMENT</th>
+                    <th style="width:20%">TEST METHOD</th>
+                    <th style="width:21%">RESULTS</th>
                     <th style="width:5%">TYPE</th>
                 </tr>
             </thead>
             <tbody class="dim-tbody">
-                <tr class="dim-functional-row appearance-row">
-                    <td rowspan="1" class="dim-vertical-td" data-col="concept">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">SURFACE FINISH</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">COATING UNIFORMITY</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">COLOR MATCH</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">LABELING / MARKING</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="spec">
-                        <div class="vertical-list method-list"></div>
-                        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
-                        <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="equipment">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">VISUAL INSPECTION</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">COLOR CHART</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td appearance-method-td" data-col="method">
-                        <div class="vertical-list appearance-method-list">
-                            <div class="appearance-method-item">
-                                <div class="appearance-method-text-row">
-                                    <textarea rows="1">VISUAL INSPECTION UNDER 500 LUX LIGHT</textarea>
-                                    <button type="button" class="btn-icon" onclick="removeAppearanceMethodItem(this)">X</button>
-                                </div>
-                                <div class="appearance-method-img-area">
-                                    <div class="appearance-img-preview"></div>
-                                    <button type="button" class="btn-add-sm" onclick="triggerAppearanceItemImg(this)">📷 Add image</button>
-                                    <input type="file" accept="image/*" class="appearance-item-file" style="display:none" onchange="handleAppearanceItemImg(this)">
-                                </div>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addAppearanceMethodItem(this)">+ Add</button>
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="results">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">SURFACE FREE OF DEFECTS</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">NO SCRATCHES, DENTS OR DISCOLORATION</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">COLOR WITHIN APPROVED SAMPLE</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="type">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">1</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                ${functionalRowHtml({
+                    concept:   'SURFACE FINISH',
+                    specs:     ['SURFACE MUST BE FREE OF DEFECTS'],
+                    equipment: 'VISUAL INSPECTION',
+                    methods: [
+                        'VISUAL INSPECTION UNDER 500 LUX LIGHT.'
+                    ],
+                    results: [
+                        'SURFACE FREE OF DEFECTS',
+                        'NO SCRATCHES, DENTS OR DISCOLORATION'
+                    ],
+                    type: '1',
+                    methodImage: true
+                })}
+
+                <tr class="dim-add-row">
+                    <td colspan="6">
+                        <button type="button" class="btn-add-sm" onclick="addFunctionalRow(this)">+ Add row</button>
                     </td>
                 </tr>
             </tbody>
@@ -1306,7 +1495,12 @@ function appearanceBody() {
     `;
 }
 
-/* --- TEST METHOD (texto + imagen debajo) — handlers --- */
+/* Las filas del Appearance Test reutilizan functionalRowHtml(),
+   addFunctionalRow() y removeFunctionalRow() del Functional Test.
+   Los helpers addAppearanceMethodItem / removeAppearanceMethodItem /
+   triggerAppearanceItemImg / handleAppearanceItemImg / removeAppearanceItemImg
+   se conservan porque el módulo ARTWORK AND PACKING TEST los sigue usando. */
+
 function addAppearanceMethodItem(btn) {
     const cell = btn.closest('td');
     const list = cell.querySelector('.appearance-method-list');
@@ -1382,10 +1576,10 @@ function artworkBody() {
         <table class="dimensional-table artwork-table" data-dim-table>
             <thead>
                 <tr>
-                    <th style="width:22%">CONCEPT</th>
-                    <th style="width:18%">SPECIFICATIONS</th>
-                    <th style="width:27%">TEST METHOD</th>
-                    <th style="width:28%">RESULTS</th>
+                    <th style="width:10%">CONCEPT</th>
+                    <th class="dim-spec-th" style="width:30%">${specThInnerHtml()}</th>
+                    <th style="width:30%">TEST METHOD</th>
+                    <th style="width:30%">RESULTS</th>
                     <th style="width:5%">TYPE</th>
                 </tr>
             </thead>
@@ -1449,6 +1643,9 @@ function artworkBody() {
                             </div>
                         </div>
                         <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                        <div class="vertical-list method-list results-img-list"></div>
+                        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                        <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
                     </td>
                     <td rowspan="1" class="dim-vertical-td" data-col="type">
                         <div class="vertical-list">
@@ -1568,7 +1765,7 @@ function removeReviewsRow(btn) {
 }
 
 /* ============================================================
-   ANNEX — título + imagen debajo del título
+   ANNEX
    ============================================================ */
 function annexBody() {
     return `
@@ -1624,21 +1821,17 @@ function removeAnnexImage(btn) {
 }
 
 /* ============================================================
-   APPENDIX — título + viñetas + leyenda IMPORTANT (removible)
+   APPENDIX
    ============================================================ */
 function appendixBody() {
     return `
         <div class="appendix-body">
-            <textarea rows="1" class="appendix-heading" placeholder="Section title...">PRODUCT</textarea>
-            <ul class="appendix-list">
-                ${appendixDefaultItems().map(t => `
-                    <li>
-                        <textarea rows="1">${escapeHtml(t)}</textarea>
-                        <button type="button" class="btn-icon" onclick="removeAppendixItem(this)">X</button>
-                    </li>
-                `).join('')}
-            </ul>
-            <button type="button" class="btn-add-sm" onclick="addAppendixItem(this)">+ Add</button>
+            <div class="appendix-sections">
+                ${appendixSectionHtml('PRODUCT', appendixDefaultItems())}
+            </div>
+            <button type="button"
+                    class="btn-add-sm appendix-add-section-btn"
+                    onclick="addAppendixSection(this)">+ Add section</button>
 
             <div class="appendix-legend-wrapper">
                 ${appendixLegendHtml()}
@@ -1649,6 +1842,81 @@ function appendixBody() {
                     onclick="addAppendixLegend(this)">+ Add IMPORTANT</button>
         </div>
     `;
+}
+
+/* Bloque de sección: título editable + lista de puntos + botón + Add */
+function appendixSectionHtml(title, items) {
+    const list = (items || []).map(t => `
+        <li>
+            <textarea rows="1">${escapeHtml(t)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeAppendixItem(this)">X</button>
+        </li>
+    `).join('');
+
+    return `
+        <div class="appendix-section">
+            <button type="button"
+                    class="btn-icon appendix-section-remove"
+                    onclick="removeAppendixSection(this)"
+                    title="Remove this section">X</button>
+            <textarea rows="1" class="appendix-heading" placeholder="Section title...">${escapeHtml(title || '')}</textarea>
+            <ul class="appendix-list">${list}</ul>
+            <button type="button" class="btn-add-sm" onclick="addAppendixItem(this)">+ Add</button>
+        </div>
+    `;
+}
+
+function addAppendixSection(btn) {
+    const body = btn.closest('.appendix-body');
+    if (!body) return;
+    const container = body.querySelector('.appendix-sections');
+    if (!container) return;
+
+    const tmp = document.createElement('div');
+    tmp.innerHTML = appendixSectionHtml('PRODUCT', appendixDefaultItems()).trim();
+    const section = tmp.firstElementChild;
+    container.appendChild(section);
+
+    autoResizeAll(section);
+    const heading = section.querySelector('.appendix-heading');
+    if (heading) { heading.focus(); heading.select(); }
+}
+
+function removeAppendixSection(btn) {
+    const section = btn.closest('.appendix-section');
+    if (!section) return;
+    const container = section.closest('.appendix-sections');
+    section.remove();
+
+    /* Si se borró la última, recrear una vacía para no dejar el APPENDIX sin secciones */
+    if (container && !container.querySelector('.appendix-section')) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = appendixSectionHtml('PRODUCT', appendixDefaultItems()).trim();
+        container.appendChild(tmp.firstElementChild);
+        autoResizeAll(container);
+    }
+}
+
+/* "+ Add" dentro de una sección: agrega un punto a SU lista */
+function addAppendixItem(btn) {
+    const section = btn.closest('.appendix-section');
+    if (!section) return;
+    const list = section.querySelector('.appendix-list');
+    if (!list) return;
+
+    const li = document.createElement('li');
+    li.innerHTML = `
+        <textarea rows="1" placeholder="New requirement..."></textarea>
+        <button type="button" class="btn-icon" onclick="removeAppendixItem(this)">X</button>
+    `;
+    list.appendChild(li);
+    autoResizeAll(li);
+    li.querySelector('textarea').focus();
+}
+
+function removeAppendixItem(btn) {
+    const li = btn.closest('li');
+    if (li) li.remove();
 }
 
 function appendixLegendHtml() {
@@ -1696,23 +1964,220 @@ function appendixDefaultItems() {
     ];
 }
 
-function addAppendixItem(btn) {
-    const body = btn.closest('.appendix-body');
-    if (!body) return;
-    const list = body.querySelector('.appendix-list');
-    const li = document.createElement('li');
-    li.innerHTML = `
-        <textarea rows="1" placeholder="New requirement..."></textarea>
-        <button type="button" class="btn-icon" onclick="removeAppendixItem(this)">X</button>
-    `;
-    list.appendChild(li);
-    autoResizeAll(li);
-    li.querySelector('textarea').focus();
+/* ============================================================
+   SPECIFICATIONS — COLUMNAS DINÁMICAS (aplica a todos los test)
+   ============================================================ */
+function specThInnerHtml() {
+    return `
+        <div class="dim-th-content">
+            <span>SPECIFICATIONS</span>
+            <button type="button" class="btn-col-add"
+                    onclick="addSpecColumn(this)"
+                    title="Add specification column">＋</button>
+            <button type="button" class="btn-col-remove"
+                    onclick="removeSpecColumn(this)"
+                    title="Remove this column">−</button>
+        </div>`;
 }
 
-function removeAppendixItem(btn) {
-    const li = btn.closest('li');
-    if (li) li.remove();
+function verticalSpecCellHtml() {
+    return `
+        <div class="vertical-list"></div>
+        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+        <div class="vertical-list method-list spec-img-list"></div>
+        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+        <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
+    `;
+}
+
+function refreshSpecRemoveButtons(table) {
+    if (!table) return;
+    const headRow = table.querySelector('thead tr');
+    if (!headRow) return;
+    const specThs = [...headRow.querySelectorAll('.dim-spec-th')];
+    table.classList.toggle('has-multi-spec', specThs.length > 1);
+    specThs.forEach((th, i) => {
+        const btn = th.querySelector('.btn-col-remove');
+        if (!btn) return;
+        btn.style.visibility = (i === 0) ? 'hidden' : 'visible';
+    });
+}
+
+function refreshSpecColumnWidths(table) {
+    if (!table) return;
+    const headRow = table.querySelector('thead tr');
+    if (!headRow) return;
+    const ths = [...headRow.children];
+
+    ths.forEach(th => {
+        if (!th.dataset.baseWidth) {
+            const w = parseFloat(th.style.width);
+            th.dataset.baseWidth = (!isNaN(w) && w > 0) ? w : 10;
+        }
+    });
+
+    const specThs = ths.filter(th => th.classList.contains('dim-spec-th'));
+    const k = specThs.length;
+    if (k === 0) return;
+
+    let W = parseFloat(specThs[0].dataset.baseWidth) || 12;
+    if (k * W > 60) W = 60 / k;
+
+    const nonSpecTotalBase = ths
+        .filter(th => !th.classList.contains('dim-spec-th'))
+        .reduce((s, th) => s + parseFloat(th.dataset.baseWidth), 0);
+
+    const remaining = 100 - k * W;
+    const scale = nonSpecTotalBase > 0 ? remaining / nonSpecTotalBase : 1;
+
+    ths.forEach(th => {
+        if (th.classList.contains('dim-spec-th')) {
+            th.style.width = W.toFixed(2) + '%';
+        } else {
+            const base = parseFloat(th.dataset.baseWidth);
+            th.style.width = (base * scale).toFixed(2) + '%';
+        }
+    });
+}
+
+function addSpecColumn(btn) {
+    const table = btn.closest('.dimensional-table');
+    if (!table) return;
+    const headRow = table.querySelector('thead tr');
+    const specThs = [...headRow.querySelectorAll('.dim-spec-th')];
+    if (!specThs.length) return;
+
+    const lastSpecTh = specThs[specThs.length - 1];
+
+    const th = document.createElement('th');
+    th.className = 'dim-spec-th';
+    th.style.width = lastSpecTh.style.width || '';
+    th.innerHTML = specThInnerHtml();
+    lastSpecTh.insertAdjacentElement('afterend', th);
+
+    table.querySelectorAll('tbody tr').forEach(tr => {
+
+        if (tr.classList.contains('dim-section-row')) {
+            const nameTds = tr.querySelectorAll('.dim-section-spec-td');
+            if (nameTds.length) {
+                const newTd = document.createElement('td');
+                newTd.className = 'dim-section-spec-td';
+                newTd.innerHTML = '<input type="text" class="dim-section-spec-name" value="" placeholder="Model">';
+                nameTds[nameTds.length - 1].insertAdjacentElement('afterend', newTd);
+                return;
+            }
+            const td = tr.querySelector('.dim-section-title');
+            if (td) td.colSpan = (parseInt(td.colSpan, 10) || 1) + 1;
+            return;
+        }
+        if (tr.classList.contains('dim-add-row')) {
+            const td = tr.querySelector('td[colspan]');
+            if (td) td.colSpan = (parseInt(td.colSpan, 10) || 1) + 1;
+            return;
+        }
+
+        const vertSpecTds = tr.querySelectorAll('.dim-vertical-td[data-col="spec"]');
+        if (vertSpecTds.length > 0) {
+            const lastTd = vertSpecTds[vertSpecTds.length - 1];
+            const newTd = document.createElement('td');
+            newTd.className = 'dim-vertical-td';
+            newTd.setAttribute('data-col', 'spec');
+            newTd.innerHTML = verticalSpecCellHtml();
+            lastTd.insertAdjacentElement('afterend', newTd);
+            return;
+        }
+
+        if (tr.classList.contains('material-row')) {
+            const cells = [...tr.querySelectorAll('.material-text-td')];
+            const specCellsCount = specThs.length;
+            if (cells.length >= specCellsCount && specCellsCount >= 1) {
+                const lastSpecCell = cells[specCellsCount - 1];
+                const newTd = document.createElement('td');
+                newTd.className = 'material-text-td';
+                newTd.innerHTML = `<textarea rows="1" class="dim-spec-input material-text" placeholder="Specification..."></textarea>`;
+                lastSpecCell.insertAdjacentElement('afterend', newTd);
+            }
+            return;
+        }
+
+        const specTds = tr.querySelectorAll('.dim-spec-td');
+        if (specTds.length > 0) {
+            const lastTd = specTds[specTds.length - 1];
+            const newTd = document.createElement('td');
+            newTd.className = 'dim-spec-td';
+            const sec = tr.dataset.section;
+            if (sec === 'total-weight') {
+                newTd.innerHTML = `<textarea rows="1" class="dim-spec-input dim-total-weight" readonly>0.00 (± 5%)</textarea>`;
+            } else {
+                newTd.innerHTML = `<textarea rows="1" class="dim-spec-input${sec === 'weights' ? ' dim-weight-value' : ''}" placeholder="Specification..."></textarea>`;
+            }
+            lastTd.insertAdjacentElement('afterend', newTd);
+        }
+    });
+
+    refreshSpecRemoveButtons(table);
+    refreshSpecColumnWidths(table);
+    updateDimRowspans(table);
+    recalcTotalWeight(table);
+    autoResizeAll(table);
+}
+
+function removeSpecColumn(btn) {
+    const table = btn.closest('.dimensional-table');
+    if (!table) return;
+    const headRow = table.querySelector('thead tr');
+    const specThs = [...headRow.querySelectorAll('.dim-spec-th')];
+    if (specThs.length <= 1) return;
+
+    const th = btn.closest('th');
+    const idx = specThs.indexOf(th);
+    if (idx <= 0) return;
+
+    th.remove();
+
+    table.querySelectorAll('tbody tr').forEach(tr => {
+
+        if (tr.classList.contains('dim-section-row')) {
+            const nameTds = tr.querySelectorAll('.dim-section-spec-td');
+            if (nameTds.length) {
+                if (nameTds.length > 1 && nameTds[idx]) nameTds[idx].remove();
+                return;
+            }
+            const td = tr.querySelector('.dim-section-title');
+            if (td) td.colSpan = Math.max(1, (parseInt(td.colSpan, 10) || 1) - 1);
+            return;
+        }
+        if (tr.classList.contains('dim-add-row')) {
+            const td = tr.querySelector('td[colspan]');
+            if (td) td.colSpan = Math.max(1, (parseInt(td.colSpan, 10) || 1) - 1);
+            return;
+        }
+
+        const vertSpecTds = tr.querySelectorAll('.dim-vertical-td[data-col="spec"]');
+        if (vertSpecTds.length > 1) {
+            const target = vertSpecTds[idx];
+            if (target) target.remove();
+            return;
+        }
+
+        if (tr.classList.contains('material-row')) {
+            const cells = tr.querySelectorAll('.material-text-td');
+            if (cells.length > 1 && cells[idx]) cells[idx].remove();
+            return;
+        }
+
+        const specTds = tr.querySelectorAll('.dim-spec-td');
+        if (specTds.length > 1) {
+            const target = specTds[idx];
+            if (target) target.remove();
+        }
+    });
+
+    refreshSpecRemoveButtons(table);
+    refreshSpecColumnWidths(table);
+    updateDimRowspans(table);
+    recalcTotalWeight(table);
+    autoResizeAll(table);
 }
 
 /* ============================================================
@@ -1721,6 +2186,7 @@ function removeAppendixItem(btn) {
 function updateDimRowspans(table) {
     if (table.hasAttribute('data-material-table')) return;
     if (table.hasAttribute('data-reviews-table')) return;
+    if (table.hasAttribute('data-functional-table')) return;
 
     const tbody = table.querySelector('.dim-tbody');
     if (!tbody) return;
@@ -1737,15 +2203,24 @@ function parseFirstNumber(str) {
 
 function recalcTotalWeight(table) {
     if (!table) return;
-    const weightInputs = table.querySelectorAll('.dim-weight-value');
-    let total = 0;
-    weightInputs.forEach(inp => { total += parseFirstNumber(inp.value); });
+    const totalRows  = table.querySelectorAll('tr[data-section="total-weight"]');
+    if (!totalRows.length) return;
+    const weightRows = table.querySelectorAll('tr[data-section="weights"]');
 
-    const totalEl = table.querySelector('.dim-total-weight');
-    if (totalEl) {
-        totalEl.value = total.toFixed(2) + ' (± 5%)';
-        autoResize(totalEl);
-    }
+    totalRows.forEach(tr => {
+        tr.querySelectorAll('.dim-spec-td').forEach((td, i) => {
+            const totalEl = td.querySelector('.dim-total-weight');
+            if (!totalEl) return;
+            let total = 0;
+            weightRows.forEach(wr => {
+                const cell = wr.querySelectorAll('.dim-spec-td')[i];
+                const inp  = cell && cell.querySelector('.dim-weight-value');
+                if (inp) total += parseFirstNumber(inp.value);
+            });
+            totalEl.value = total.toFixed(2) + ' (± 5%)';
+            autoResize(totalEl);
+        });
+    });
 }
 
 function addDimDataRow(btn, section) {
@@ -1756,6 +2231,7 @@ function addDimDataRow(btn, section) {
     const newRow = document.createElement('tr');
     newRow.className = 'dim-data-row';
     newRow.setAttribute('data-section', section);
+    newRow.setAttribute('data-block', section);
 
     const indexedInput = tbody.querySelector(`tr[data-section="${section}"] .dim-index`);
     let indexCell = '';
@@ -1773,7 +2249,14 @@ function addDimDataRow(btn, section) {
         indexCell = `<span class="dim-index-spacer"></span>`;
     }
 
-    const specClass = (section === 'weights') ? ' dim-weight-value' : '';
+    const specCount = table.querySelectorAll('.dim-spec-th').length || 1;
+    let specCells = '';
+    for (let i = 0; i < specCount; i++) {
+        const cls = (section === 'weights') ? ' dim-weight-value' : '';
+        specCells += `<td class="dim-spec-td">
+            <textarea rows="1" class="dim-spec-input${cls}" placeholder="Specification..."></textarea>
+        </td>`;
+    }
 
     newRow.innerHTML = `
         <td class="dim-concept-td">
@@ -1783,9 +2266,7 @@ function addDimDataRow(btn, section) {
             </div>
             <button type="button" class="btn-icon dim-row-remove" onclick="removeDimDataRow(this)" title="Delete row">X</button>
         </td>
-        <td class="dim-spec-td">
-            <textarea rows="1" class="dim-spec-input${specClass}" placeholder="Specification..."></textarea>
-        </td>
+        ${specCells}
     `;
 
     tbody.insertBefore(newRow, addRow);
@@ -1822,7 +2303,7 @@ function addMethodItem(btn) {
     const cell = btn.closest('td');
     const list = cell.querySelector('.vertical-list');
     const item = document.createElement('div');
-    item.className = 'vertical-item';
+    item.className = 'vertical-item method-item';
     item.innerHTML = `
         <span class="method-num"></span>
         <textarea rows="1"></textarea>
@@ -1875,137 +2356,6 @@ function handleMethodImageUpload(input) {
 
 function removeMethodImage(btn) {
     btn.closest('.vertical-item').remove();
-}
-
-/* ============================================================
-   OTHER TESTS (genéricos vía buildDimStyleTable)
-   ============================================================ */
-function buildDimStyleTable(config) {
-    const headers = [
-        { label: 'CONCEPT',              width: '20%' },
-        { label: 'SPECIFICATIONS',       width: '10%' },
-        { label: 'EQUIPMENT/INSTRUMENT', width: '13%' },
-        { label: 'TEST METHOD',          width: '30%' },
-        { label: 'RESULTS',              width: '20%' },
-        { label: 'TYPE',                 width: '3%'  }
-    ];
-
-    let tbodyHtml = '';
-
-    config.sections.forEach((section, sIdx) => {
-        let sectionRow = `
-            <tr class="dim-section-row">
-                <td colspan="2" class="dim-section-title">${escapeHtml(section.title)}</td>
-        `;
-
-        if (sIdx === 0) {
-            const equipmentHtml = (section.equipment || []).map(v => `
-                <div class="vertical-item">
-                    <textarea rows="1">${escapeHtml(v)}</textarea>
-                    <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                </div>`).join('');
-
-            const resultsHtml = (section.results || []).map(v => `
-                <div class="vertical-item">
-                    <textarea rows="1">${escapeHtml(v)}</textarea>
-                    <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                </div>`).join('');
-
-            const typesHtml = (section.types || ['1']).map(v => `
-                <div class="vertical-item">
-                    <textarea rows="1">${escapeHtml(v)}</textarea>
-                    <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                </div>`).join('');
-
-            sectionRow += `
-                <td rowspan="1" class="dim-vertical-td" data-col="equipment">
-                    <div class="vertical-list">${equipmentHtml}</div>
-                    <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                </td>
-                <td rowspan="1" class="dim-vertical-td" data-col="method">
-                    <div class="vertical-list method-list"></div>
-                    <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
-                    <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
-                </td>
-                <td rowspan="1" class="dim-vertical-td" data-col="results">
-                    <div class="vertical-list">${resultsHtml}</div>
-                    <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                </td>
-                <td rowspan="1" class="dim-vertical-td" data-col="type">
-                    <div class="vertical-list">${typesHtml}</div>
-                    <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                </td>
-            `;
-        }
-
-        sectionRow += `</tr>`;
-        tbodyHtml += sectionRow;
-
-        section.rows.forEach(r => {
-            const indexCell = section.indexed
-                ? `<input type="text" class="dim-index" value="${escapeHtml(r[0])}" maxlength="3">`
-                : `<span class="dim-index-spacer"></span>`;
-            const concept = section.indexed ? r[1] : r[0];
-            const spec    = section.indexed ? r[2] : r[1];
-
-            tbodyHtml += `
-                <tr class="dim-data-row" data-section="${section.key}">
-                    <td class="dim-concept-td">
-                        <div class="dim-row-content">
-                            ${indexCell}
-                            <textarea rows="1" class="dim-concept-input">${escapeHtml(concept)}</textarea>
-                        </div>
-                        <button type="button" class="btn-icon dim-row-remove" onclick="removeDimDataRow(this)" title="Delete row">X</button>
-                    </td>
-                    <td class="dim-spec-td">
-                        <textarea rows="1" class="dim-spec-input">${escapeHtml(spec)}</textarea>
-                    </td>
-                </tr>
-            `;
-        });
-
-        tbodyHtml += `
-            <tr class="dim-add-row">
-                <td colspan="2">
-                    <button type="button" class="btn-add-sm" onclick="addDimDataRow(this, '${section.key}')">+ Add row</button>
-                </td>
-            </tr>
-        `;
-    });
-
-    return `
-        <table class="dimensional-table" data-dim-table>
-            <thead>
-                <tr>
-                    ${headers.map(h => `<th style="width:${h.width}">${escapeHtml(h.label)}</th>`).join('')}
-                </tr>
-            </thead>
-            <tbody class="dim-tbody">
-                ${tbodyHtml}
-            </tbody>
-        </table>
-    `;
-}
-
-function genericItemsBody() {
-    return buildDimStyleTable({
-        sections: [{
-            key: 'items',
-            title: 'ITEMS',
-            equipment: ['DOCUMENTATION', 'CERTIFICATES', 'PHOTOGRAPHS'],
-            results: [
-                'ALL ITEMS COMPLETE',
-                'DOCUMENTATION REVIEWED',
-                'INFORMATION VERIFIED'
-            ],
-            types: ['1'],
-            rows: [
-                ['ITEM 01', 'DESCRIPTION / REFERENCE'],
-                ['ITEM 02', 'DESCRIPTION / REFERENCE'],
-                ['ITEM 03', 'DESCRIPTION / REFERENCE']
-            ]
-        }]
-    });
 }
 
 /* ============================================================

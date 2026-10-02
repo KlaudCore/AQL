@@ -228,6 +228,57 @@ td textarea {
     line-height: 1.1;
 }
 
+/* ============ HEADER — ITEMS (lista vertical) ============ */
+.items-list-wrapper { min-width: 0; }
+
+.items-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.items-list li {
+    display: flex;
+    gap: 3px;
+    align-items: flex-start;
+    min-width: 0;
+}
+.items-list li textarea {
+    flex: 1;
+    min-width: 0;
+    min-height: 1.35em;
+    font-size: 12px;
+    line-height: 1.35;
+    padding: 2px 4px;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 3px;
+    resize: none;
+    overflow: hidden;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+.items-list li textarea:hover,
+.items-list li textarea:focus {
+    border: 1px solid var(--secondary);
+    background: var(--bg-light);
+    outline: none;
+}
+.items-list li .btn-icon {
+    padding: 1px 5px;
+    font-size: 9px;
+    margin-top: 1px;
+}
+.items-list-wrapper .btn-add-sm {
+    align-self: flex-start;
+    margin-top: 3px;
+    padding: 2px 7px;
+    font-size: 9px;
+}
+
 /* ============ PRODUCT IMAGE ============ */
 .product-image-section {
     width: 200px;
@@ -275,8 +326,8 @@ td textarea {
 }
 .product-image-preview:not(:empty) { display: block; }
 .product-image-preview img {
-    max-height: 150px;
-    max-width: 300px;
+    max-height: 100%;
+    max-width: 100%;
     border: 1px solid var(--border);
     border-radius: 4px;
     display: block;
@@ -530,6 +581,18 @@ td textarea {
     background: #fafbfc;
     text-align: center;
 }
+
+/* ============================================================
+   FILA ESPACIADORA — espacio en blanco dentro de la tabla
+   ============================================================ */
+.dimensional-table .dim-spacer-row td {
+    padding: 3px;
+    background: #fafbfc;
+    height: 22px;
+    border: 1px solid var(--border);
+    border-top: none;
+}
+
 .dim-concept-td {
     position: relative;
 }
@@ -652,7 +715,7 @@ input[type="text"].dim-index {
 }
 .method-img-wrapper img {
     max-width: 100%;
-    max-height: 350px;
+    max-height: 100%;
     border: 1px solid var(--border);
     border-radius: 3px;
     display: block;
@@ -979,7 +1042,10 @@ input[type="text"].dim-section-ref:focus {
 .preview-content .page-placeholder,
 .preview-content .dim-add-row,
 .preview-content .btn-add-sm,
-.preview-content .appendix-legend-remove {
+.preview-content .btn-col-add,
+.preview-content .btn-col-remove,
+.preview-content .appendix-legend-remove,
+.preview-content .appendix-section-remove {
     display: none !important;
 }
 .preview-content input[type="text"],
@@ -1002,6 +1068,15 @@ input[type="text"].dim-section-ref:focus {
 }
 .preview-content .method-num {
     color: var(--primary) !important;
+}
+
+/* Preview: centrar SPECIFICATIONS al ocultar botones +/- */
+.preview-content .dim-th-content {
+    justify-content: center !important;
+}
+.preview-content .dim-th-content > span {
+    flex: 1;
+    text-align: center;
 }
 
 /* ============ PDF HINT (toast flotante) ============ */
@@ -1032,7 +1107,7 @@ input[type="text"].dim-section-ref:focus {
     transform: translateX(-50%) translateY(0);
 }
 @media print { .pdf-hint { display: none !important; } }
-@media (max-width: 480px) {
+@media (max-width: 500px) {
     .pdf-hint { font-size: 12px; padding: 10px 16px; white-space: normal; text-align: center; }
 }
 
@@ -1046,6 +1121,32 @@ input[type="text"].dim-section-ref:focus {
 .dim-functional-row > .dim-vertical-td[data-col="concept"] .vertical-item textarea {
     font-weight: 600;
     color: var(--primary);
+}
+
+/* ============================================================
+   BOTÓN "Delete row" DEL FUNCTIONAL TEST
+   — Anclado en la celda CONCEPT, ARRIBA del delete del concepto
+   ============================================================ */
+.dim-functional-row .dim-vertical-td[data-col="concept"] {
+    position: relative;
+    padding-top: 15px !important;   /* espacio reservado para el botón de borrar fila */
+}
+
+.dim-func-row-remove {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    padding: 1px 5px;
+    font-size: 9px;
+    z-index: 2;
+}
+.dim-functional-row:hover .dim-func-row-remove { opacity: 1; }
+
+.preview-content .dim-func-row-remove { display: none !important; }
+@media print {
+    .dim-func-row-remove { display: none !important; }
 }
 
 /* ============================================================
@@ -1347,6 +1448,63 @@ textarea.appendix-legend-text:focus {
 .appendix-legend-remove:hover { background: #c53030; transform: scale(1.08); }
 
 /* ============================================================
+   APPENDIX — secciones (título + lista de puntos)
+   ============================================================ */
+.appendix-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.appendix-section {
+    position: relative;
+    padding: 8px 10px 10px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: #fcfdff;
+}
+
+.appendix-section .appendix-list {
+    margin: 8px 0 0;
+}
+
+.appendix-section .btn-add-sm {
+    margin-left: 18px;
+    margin-top: 6px;
+}
+
+.appendix-section-remove {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 1px 6px;
+    font-size: 9px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 2;
+}
+.appendix-section:hover .appendix-section-remove { opacity: 1; }
+
+.appendix-add-section-btn {
+    margin-top: 10px;
+}
+
+/* Preview y print: ocultar el botón de borrar sección y simplificar caja */
+.preview-content .appendix-section-remove { display: none !important; }
+
+@media print {
+    .appendix-section-remove { display: none !important; }
+    .appendix-section {
+        border: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin-bottom: 8px !important;
+    }
+    .appendix-sections { gap: 8px !important; }
+    .appendix-add-section-btn { display: none !important; }
+}
+
+/* ============================================================
    PRINT — LETTER PORTRAIT
    ============================================================ */
 @media print {
@@ -1367,6 +1525,7 @@ textarea.appendix-legend-text:focus {
     .img-remove, .method-file, .product-image-file,
     .dim-method-file, .annex-file, .appearance-item-file,
     .page-placeholder, .dim-add-row, .btn-add-sm,
+    .btn-col-add, .btn-col-remove,
     .appendix-legend-remove,
     .pdf-hint {
         display: none !important;
@@ -1409,14 +1568,37 @@ textarea.appendix-legend-text:focus {
         min-height: 0 !important;
     }
 
+    /* ---- TH: fondo gris claro PERO texto oscuro legible ---- */
     th {
         background-color: #f0f0f0 !important;
+        color: #1a365d !important;
+        -webkit-text-fill-color: #1a365d !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
+
+    /* Encabezados de la tabla dimensional: fondo gris claro + texto azul oscuro */
+    .dimensional-table th,
+    .dimensional-table th .dim-th-content > span,
+    .dim-th-content > span {
+        background-color: #f0f0f0 !important;
+        color: #1a365d !important;
+        -webkit-text-fill-color: #1a365d !important;
+    }
+
+    /* Centrar "SPECIFICATIONS" cuando los botones +/- están ocultos */
+    .dim-th-content {
+        justify-content: center !important;
+    }
+    .dim-th-content > span {
+        flex: 1;
+        text-align: center;
+    }
+
     .column-header, .sheet-title-bar {
         background-color: #1a365d !important;
         color: white !important;
+        -webkit-text-fill-color: white !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
@@ -1443,16 +1625,22 @@ textarea.appendix-legend-text:focus {
     }
     .supplier-label { font-size: 7px !important; }
 
+    .items-list li textarea {
+        font-size: 9px !important;
+        padding: 0 2px !important;
+        min-height: 0 !important;
+    }
+
     .product-image-section {
-        width: 110px !important;
+        width: 150px !important;
         padding: 3px !important;
-        min-height: 45px !important;
+        min-height: 90px !important;
         background: transparent !important;
         border: 1px solid #ccc !important;
     }
     .product-image-preview img {
-        max-height: 42px !important;
-        max-width: 95px !important;
+        max-height: 100% !important;
+        max-width: 100% !important;
     }
 
     .tests-columns { gap: 4px !important; }
@@ -1483,6 +1671,13 @@ textarea.appendix-legend-text:focus {
     .vertical-item textarea { font-size: 7px !important; padding: 0 2px !important; }
     .method-img-wrapper img { max-height: 300px !important; }
     .dim-vertical-td { padding: 2px !important; }
+
+    /* Fila espaciadora en impresión */
+    .dimensional-table .dim-spacer-row td {
+        height: 16px !important;
+        background: transparent !important;
+        border: none !important;
+    }
 
     .material-row .dim-concept-input,
     .material-row .dim-spec-input {
@@ -1600,6 +1795,10 @@ textarea.appendix-legend-text:focus {
     .supplier-grid { grid-template-columns: 1fr; gap: 10px; padding: 12px; }
     .supplier-grid .span-2 { grid-column: span 1; }
 
+    .items-list li textarea { font-size: 16px; padding: 6px 5px; }
+    .items-list-wrapper .btn-add-sm { font-size: 12px; padding: 5px 10px; }
+    .items-list li .btn-icon { font-size: 12px; padding: 4px 8px; }
+
     .product-image-section {
         width: 100%;
         min-height: 100px;
@@ -1691,3 +1890,85 @@ textarea.appendix-legend-text:focus {
     .modal { padding: 20px; }
     .test-option { padding: 12px 14px; font-size: 12px; }
 }
+
+/* ============================================================
+   DIMENSIONAL TEST (TYPE A) — bloques removibles
+   ============================================================ */
+.dim-block-header td { border: 1px solid var(--border) !important; }
+.dim-block-header td.dim-section-title { position: relative; }
+.dim-block-title-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+input[type="text"].dim-section-name {
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+    font-weight: bold;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    padding: 1px 3px;
+}
+input[type="text"].dim-section-name:hover,
+input[type="text"].dim-section-name:focus {
+    border-color: var(--secondary);
+    background: white;
+    outline: none;
+}
+.dim-block-remove {
+    flex: none;
+    padding: 1px 5px;
+    font-size: 9px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.dim-block-header:hover .dim-block-remove { opacity: 1; }
+
+.dim-section-spec-td {
+    background-color: var(--bg-light);
+    padding: 4px 2px !important;
+    text-align: center;
+    vertical-align: middle !important;
+}
+input[type="text"].dim-section-spec-name {
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+    font-weight: bold;
+    color: var(--primary);
+    font-size: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    padding: 1px 2px;
+}
+input[type="text"].dim-section-spec-name:hover,
+input[type="text"].dim-section-spec-name:focus {
+    border-color: var(--secondary);
+    background: white;
+    outline: none;
+}
+
+/* Texto centrado como en la hoja de referencia */
+.dim-type-a-table .dim-concept-input,
+.dim-type-a-table .dim-spec-input { text-align: center; }
+
+.dim-add-section-row td { background: #f4f7fb; }
+
+@media print {
+    .dim-block-remove { display: none !important; }
+    .dim-section-name,
+    .dim-section-spec-name {
+        font-size: 7.5px !important;
+        padding: 0 1px !important;
+    }
+    .dim-section-spec-td { padding: 1px !important; }
+}
+.preview-content .dim-block-remove { display: none !important; }
