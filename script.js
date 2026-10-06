@@ -108,7 +108,7 @@ const HEADER_HTML = `
                 <ul class="test-list">
                     <li>
                         <textarea rows="1">ISO 2859-1 (MIL STD 105E)</textarea>
-                        <button type="button" class="btn-icon" onclick="this.parentElement.remove()">X</button>
+                        <button type="button" class="btn-icon" onclick="removeTestListItem(this)">X</button>
                     </li>
                 </ul>
             </div>
@@ -121,7 +121,7 @@ const HEADER_HTML = `
                 <ul class="test-list">
                     <li>
                         <textarea rows="1">S-2 (SI) LEVEL I REDUCED INSPECTION</textarea>
-                        <button type="button" class="btn-icon" onclick="this.parentElement.remove()">X</button>
+                        <button type="button" class="btn-icon" onclick="removeTestListItem(this)">X</button>
                     </li>
                 </ul>
             </div>
@@ -134,7 +134,7 @@ const HEADER_HTML = `
                 <ol class="test-list numbered">
                     <li>
                         <textarea rows="1">FOR CRITICAL DEFECTS AQL= NOT ALLOWED</textarea>
-                        <button type="button" class="btn-icon" onclick="this.parentElement.remove()">X</button>
+                        <button type="button" class="btn-icon" onclick="removeTestListItem(this)">X</button>
                     </li>
                 </ol>
             </div>
@@ -251,7 +251,7 @@ function applyHeaderState(page, state) {
             const item = document.createElement('li');
             item.innerHTML = `
                 <textarea rows="1">${escapeHtml(v)}</textarea>
-                <button type="button" class="btn-icon" onclick="this.parentElement.remove()">X</button>
+                <button type="button" class="btn-icon" onclick="removeTestListItem(this)">X</button>
             `;
             list.appendChild(item);
         });
@@ -266,8 +266,44 @@ function applyHeaderState(page, state) {
             `;
             if (btnUpload) btnUpload.style.display = 'none';
         }
+    } else {
+        /* Si la fuente no tiene imagen, limpiar también la destino */
+        const preview = page.querySelector('.product-image-preview');
+        const btnUpload = page.querySelector('.btn-img-lg');
+        if (preview) preview.innerHTML = '';
+        if (btnUpload) btnUpload.style.display = '';
     }
     autoResizeAll(page);
+}
+
+/* ============================================================
+   HEADER SYNC — propaga cambios del header a las hojas siguientes
+   ============================================================ */
+let _headerSyncTimer = null;
+let _headerSyncSource = null;
+
+function scheduleHeaderSync(page) {
+    if (!page) return;
+    _headerSyncSource = page;
+    clearTimeout(_headerSyncTimer);
+    _headerSyncTimer = setTimeout(() => {
+        const src = _headerSyncSource;
+        _headerSyncSource = null;
+        if (src && src.isConnected) syncHeaderToFollowing(src);
+    }, 150);
+}
+
+function syncHeaderToFollowing(sourcePage) {
+    const pages = [...document.querySelectorAll('#pages-container .page')];
+    const idx = pages.indexOf(sourcePage);
+    if (idx === -1) return;
+
+    const state = captureHeaderState(sourcePage);
+    if (!state) return;
+
+    for (let i = idx + 1; i < pages.length; i++) {
+        applyHeaderState(pages[i], state);
+    }
 }
 
 function escapeHtml(str) {
@@ -301,6 +337,11 @@ function init() {
 
     container.addEventListener('input', (e) => {
         if (e.target.tagName === 'TEXTAREA') autoResize(e.target);
+
+        /* 👇 NEW: sincronizar header hacia las hojas posteriores */
+        if (e.target.closest('.document-header')) {
+            scheduleHeaderSync(e.target.closest('.page'));
+        }
     });
 
     document.addEventListener('input', (e) => {
@@ -540,6 +581,10 @@ function handleProductImageUpload(input) {
                 <button type="button" class="img-remove" onclick="removeProductImage(this)" title="Remove image">×</button>
             `;
             if (btnUpload) btnUpload.style.display = 'none';
+
+            /* 👇 NEW: propagar cambio a hojas siguientes */
+            const page = section.closest('.page');
+            if (page) scheduleHeaderSync(page);
         };
         reader.readAsDataURL(file);
     }
@@ -551,6 +596,10 @@ function removeProductImage(btn) {
     if (fileInput) fileInput.value = '';
     const btnUpload = section.querySelector('.btn-img-lg');
     if (btnUpload) btnUpload.style.display = '';
+
+    /* 👇 NEW: propagar cambio a hojas siguientes */
+    const page = section.closest('.page');
+    if (page) scheduleHeaderSync(page);
 }
 
 /* ============================================================
@@ -569,11 +618,19 @@ function addHeaderItem(btn) {
     autoResizeAll(li);
     const ta = li.querySelector('textarea');
     if (ta) ta.focus();
+
+    /* 👇 NEW: propagar */
+    const page = li.closest('.page');
+    if (page) scheduleHeaderSync(page);
 }
 
 function removeHeaderItem(btn) {
     const li = btn.closest('li');
+    const page = li && li.closest('.page');
     if (li) li.remove();
+
+    /* 👇 NEW: propagar */
+    if (page) scheduleHeaderSync(page);
 }
 
 /* ============================================================
@@ -589,19 +646,25 @@ function addTestItem(btn) {
         ['DIMENSIONAL TEST','FUNCTIONAL TEST','MATERIAL TEST','APPEARANCE TEST','ARTWORK AND PACKING TEST'].forEach(t => {
             const li = document.createElement('li');
             li.innerHTML = `<textarea rows="1">${escapeHtml(t)}</textarea>
-                            <button type="button" class="btn-icon" onclick="this.parentElement.remove()">X</button>`;
+                            <button type="button" class="btn-icon" onclick="removeTestListItem(this)">X</button>`;
             list.appendChild(li);
         });
         autoResizeAll(list);
         select.value = '';
+        const page = list.closest('.page');
+        if (page) scheduleHeaderSync(page);
         return;
     }
     const li = document.createElement('li');
     li.innerHTML = `<textarea rows="1">${escapeHtml(value)}</textarea>
-                    <button type="button" class="btn-icon" onclick="this.parentElement.remove()">X</button>`;
+                    <button type="button" class="btn-icon" onclick="removeTestListItem(this)">X</button>`;
     list.appendChild(li);
     autoResizeAll(list);
     select.value = '';
+
+    /* 👇 NEW: propagar */
+    const page = li.closest('.page');
+    if (page) scheduleHeaderSync(page);
 }
 
 function addSimpleItem(btn) {
@@ -611,10 +674,24 @@ function addSimpleItem(btn) {
     const list = btn.closest('.test-column').querySelector('.test-list');
     const li = document.createElement('li');
     li.innerHTML = `<textarea rows="1">${escapeHtml(value)}</textarea>
-                    <button type="button" class="btn-icon" onclick="this.parentElement.remove()">X</button>`;
+                    <button type="button" class="btn-icon" onclick="removeTestListItem(this)">X</button>`;
     list.appendChild(li);
     autoResizeAll(list);
     input.value = '';
+
+    /* 👇 NEW: propagar */
+    const page = li.closest('.page');
+    if (page) scheduleHeaderSync(page);
+}
+
+/* NUEVO: eliminar item de cualquier test-list del header + propagar */
+function removeTestListItem(btn) {
+    const li = btn.closest('li');
+    const page = li && li.closest('.page');
+    if (li) li.remove();
+
+    /* 👇 NEW: propagar */
+    if (page) scheduleHeaderSync(page);
 }
 
 /* ============================================================
