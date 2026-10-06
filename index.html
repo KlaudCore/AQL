@@ -11,12 +11,12 @@
 <div class="pages-container" id="pages-container"></div>
 
 <div class="bottom-actions">
-    <button class="btn btn-add-sheet" onclick="openTestModal()">➕ Add Test Sheet</button>
-    <button class="btn btn-preview" onclick="openPreview()">👁️ Preview</button>
-    <button class="btn btn-print" onclick="printDocument()">🖨️ Print</button>
-    <button class="btn btn-save-pdf" id="btn-save-pdf" onclick="savePDF()">💾 Save PDF</button>
-    <button class="btn btn-project" onclick="saveProject()">📦 Save Project</button>
-    <button class="btn btn-project" style="background:#285e61;" onclick="document.getElementById('project-file-input').click()">📂 Open Project</button>
+    <button class="btn btn-add-sheet" onclick="openTestModal()">➕ Añadir Nuevo Test</button>
+    <button class="btn btn-project" style="background:#285e61;" onclick="document.getElementById('project-file-input').click()">📂 Abrir Ficha</button>
+    <button class="btn btn-preview" onclick="openPreview()">👁️ Vista Previa</button>
+    <button class="btn btn-project" onclick="saveProject()">📦 Guardar Ficha</button>
+    <button class="btn btn-save-pdf" id="btn-save-pdf" onclick="savePDF()">💾 Guardar como PDF</button>
+    <button class="btn btn-print" onclick="printDocument()">🖨️ Imprimir</button>
     <input type="file" id="project-file-input" accept=".json,application/json" style="display:none" onchange="loadProject(this)">
 </div>
 
