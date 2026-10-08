@@ -267,7 +267,6 @@ function applyHeaderState(page, state) {
             if (btnUpload) btnUpload.style.display = 'none';
         }
     } else {
-        /* Si la fuente no tiene imagen, limpiar también la destino */
         const preview = page.querySelector('.product-image-preview');
         const btnUpload = page.querySelector('.btn-img-lg');
         if (preview) preview.innerHTML = '';
@@ -277,7 +276,7 @@ function applyHeaderState(page, state) {
 }
 
 /* ============================================================
-   HEADER SYNC — propaga cambios del header a las hojas siguientes
+   HEADER SYNC
    ============================================================ */
 let _headerSyncTimer = null;
 let _headerSyncSource = null;
@@ -338,7 +337,6 @@ function init() {
     container.addEventListener('input', (e) => {
         if (e.target.tagName === 'TEXTAREA') autoResize(e.target);
 
-        /* 👇 NEW: sincronizar header hacia las hojas posteriores */
         if (e.target.closest('.document-header')) {
             scheduleHeaderSync(e.target.closest('.page'));
         }
@@ -536,6 +534,24 @@ function loadProject(input) {
                 body.insertBefore(newAddBtn, legendWrapper || null);
             });
 
+            /* Migrar celdas SPECIFICATIONS del MATERIAL TEST al nuevo formato (texto + imagen) */
+            container.querySelectorAll('table.material-table').forEach(table => {
+                const specCount = table.querySelectorAll('.dim-spec-th').length || 1;
+                table.querySelectorAll('tr.material-row').forEach(row => {
+                    const cells = [...row.children];
+                    for (let i = 1; i <= specCount; i++) {
+                        const cell = cells[i];
+                        if (!cell) continue;
+                        if (cell.classList.contains('material-spec-td')) continue;
+                        const ta = cell.querySelector('textarea');
+                        const text = ta ? ta.value : '';
+                        cell.classList.add('material-spec-td');
+                        cell.classList.remove('material-text-td');
+                        cell.innerHTML = materialSpecCellHtml(text ? [text] : []);
+                    }
+                });
+            });
+
             updatePageNumbers();
             updateAllBlankStatus();
 
@@ -582,7 +598,6 @@ function handleProductImageUpload(input) {
             `;
             if (btnUpload) btnUpload.style.display = 'none';
 
-            /* 👇 NEW: propagar cambio a hojas siguientes */
             const page = section.closest('.page');
             if (page) scheduleHeaderSync(page);
         };
@@ -597,7 +612,6 @@ function removeProductImage(btn) {
     const btnUpload = section.querySelector('.btn-img-lg');
     if (btnUpload) btnUpload.style.display = '';
 
-    /* 👇 NEW: propagar cambio a hojas siguientes */
     const page = section.closest('.page');
     if (page) scheduleHeaderSync(page);
 }
@@ -619,7 +633,6 @@ function addHeaderItem(btn) {
     const ta = li.querySelector('textarea');
     if (ta) ta.focus();
 
-    /* 👇 NEW: propagar */
     const page = li.closest('.page');
     if (page) scheduleHeaderSync(page);
 }
@@ -629,7 +642,6 @@ function removeHeaderItem(btn) {
     const page = li && li.closest('.page');
     if (li) li.remove();
 
-    /* 👇 NEW: propagar */
     if (page) scheduleHeaderSync(page);
 }
 
@@ -662,7 +674,6 @@ function addTestItem(btn) {
     autoResizeAll(list);
     select.value = '';
 
-    /* 👇 NEW: propagar */
     const page = li.closest('.page');
     if (page) scheduleHeaderSync(page);
 }
@@ -679,18 +690,15 @@ function addSimpleItem(btn) {
     autoResizeAll(list);
     input.value = '';
 
-    /* 👇 NEW: propagar */
     const page = li.closest('.page');
     if (page) scheduleHeaderSync(page);
 }
 
-/* NUEVO: eliminar item de cualquier test-list del header + propagar */
 function removeTestListItem(btn) {
     const li = btn.closest('li');
     const page = li && li.closest('.page');
     if (li) li.remove();
 
-    /* 👇 NEW: propagar */
     if (page) scheduleHeaderSync(page);
 }
 
@@ -970,7 +978,6 @@ function dimSpecNameCells(names) {
         </td>`).join('');
 }
 
-/* Fila de datos genérica (concepto + una celda por columna SPECIFICATIONS) */
 function dimDataRowHtml(section, concept, specs, indexLetter) {
     const isWeights = section === 'weights';
     const indexCell = (indexLetter !== null && indexLetter !== undefined)
@@ -993,7 +1000,6 @@ function dimDataRowHtml(section, concept, specs, indexLetter) {
         </tr>`;
 }
 
-/* Bloque removable: cabecera (título editable + nombres de modelo) + filas + "add row" */
 function dimBlockHtml(id, title, names, rows) {
     return `
         <tr class="dim-section-row dim-block-header" data-block="${id}">
@@ -1095,7 +1101,6 @@ function dimensionalBody() {
                     </td>
                 </tr>
 
-                <!-- 👇 Fila espaciadora en blanco (igual a + Add row pero sin botón) -->
                 <tr class="dim-add-row dim-spacer-row">
                     <td colspan="2"></td>
                 </tr>
@@ -1125,7 +1130,6 @@ function renderElementaryRows() {
     return data.map(r => dimDataRowHtml('elementary', r[1], [r[2]], r[0])).join('');
 }
 
-/* Quita un bloque completo (cabecera + filas + "add row") */
 function removeDimSection(btn) {
     const header = btn.closest('tr');
     const table  = header.closest('.dimensional-table');
@@ -1138,7 +1142,6 @@ function removeDimSection(btn) {
     recalcTotalWeight(table);
 }
 
-/* Añade una sección nueva con título editable */
 function addDimSection(btn) {
     const table  = btn.closest('.dimensional-table');
     const addRow = btn.closest('tr');
@@ -1240,7 +1243,6 @@ function dimensionalBodyB() {
 /* ============================================================
    FUNCTIONAL TEST
    ============================================================ */
-/* Helper — construye una fila completa del Functional Test */
 function functionalRowHtml(data = {}) {
     const concept   = data.concept   || '';
     const equipment = data.equipment || '';
@@ -1248,7 +1250,6 @@ function functionalRowHtml(data = {}) {
     const specs     = data.specs     || [''];
     const methods   = data.methods   || [''];
     const results   = data.results   || [''];
-    const methodImage = !!data.methodImage; // true → agrega 📷 Add image en TEST METHOD
 
     const specHtml = specs.map(v => `
         <div class="vertical-item">
@@ -1272,7 +1273,6 @@ function functionalRowHtml(data = {}) {
     return `
         <tr class="dim-functional-row">
             <td rowspan="1" class="dim-vertical-td" data-col="concept">
-                <!-- 👇 Delete row — esquina superior derecha, ARRIBA del delete del CONCEPT -->
                 <button type="button" class="btn-icon dim-func-row-remove" onclick="removeFunctionalRow(this)" title="Delete row">X</button>
 
                 <div class="vertical-list">
@@ -1305,10 +1305,9 @@ function functionalRowHtml(data = {}) {
             <td rowspan="1" class="dim-vertical-td" data-col="method">
                 <div class="vertical-list method-numbered-list">${methodHtml}</div>
                 <button type="button" class="btn-add-sm" onclick="addMethodItem(this)">+ Add</button>
-                ${methodImage ? `
                 <div class="vertical-list method-list method-img-list"></div>
                 <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
-                <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">` : ''}
+                <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
             </td>
             <td rowspan="1" class="dim-vertical-td" data-col="results">
                 <div class="vertical-list">${resultHtml}</div>
@@ -1354,19 +1353,6 @@ function functionalBody() {
                     type: '1'
                 })}
 
-                ${functionalRowHtml({
-                    concept:   'TIGHTENING RESISTENCE IN THE CONNECTIONS (THREADS)',
-                    specs:     ['TO APPLY: THREADS 5.0 N·m (0.5 kg·m)'],
-                    equipment: 'TORQUE METER',
-                    methods: [
-                        'THE SAMPLES MUST BE FREE OF BURRS.',
-                    ],
-                    results: [
-                        'THE SHOWER ARM MUST NOT HAVE CRACKS, FISSURES, LOW THREADS OR ANY OTHER DEFORMATION WHEN ARE SUBJECTED TO THIS TEST'
-                    ],
-                    type: '1'
-                })}
-
                 <tr class="dim-add-row">
                     <td colspan="6">
                         <button type="button" class="btn-add-sm" onclick="addFunctionalRow(this)">+ Add row</button>
@@ -1383,7 +1369,7 @@ function addFunctionalRow(btn) {
     const addRow = btn.closest('tr');
 
     const tmp = document.createElement('tbody');
-    tmp.innerHTML = functionalRowHtml({ methodImage: table.classList.contains('appearance-table') }).trim();
+    tmp.innerHTML = functionalRowHtml({}).trim();
     const newRow = tmp.firstElementChild;
     tbody.insertBefore(newRow, addRow);
 
@@ -1400,8 +1386,7 @@ function removeFunctionalRow(btn) {
     if (tbody && !tbody.querySelector('.dim-functional-row')) {
         const addRow = tbody.querySelector('.dim-add-row');
         const tmp = document.createElement('tbody');
-        const tbl = tbody.closest('table');
-        tmp.innerHTML = functionalRowHtml({ methodImage: !!tbl && tbl.classList.contains('appearance-table') }).trim();
+        tmp.innerHTML = functionalRowHtml({}).trim();
         tbody.insertBefore(tmp.firstElementChild, addRow);
     }
 }
@@ -1409,67 +1394,71 @@ function removeFunctionalRow(btn) {
 /* ============================================================
    MATERIAL TEST
    ============================================================ */
+/* Celda SPECIFICATIONS del MATERIAL TEST:
+   lista vertical de textos + lista vertical de imágenes + botones */
+function materialSpecCellHtml(specs) {
+    const items = Array.isArray(specs) ? specs : (specs ? [specs] : []);
+    const listHtml = items.map(v => `
+        <div class="vertical-item">
+            <textarea rows="1" placeholder="Specification...">${escapeHtml(v)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+        </div>
+    `).join('');
+    return `
+        <div class="vertical-list material-spec-text-list">${listHtml}</div>
+        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+        <div class="vertical-list method-list material-spec-img-list"></div>
+        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+        <input type="file" accept="image/*" class="method-file" style="display:none"
+               onchange="handleMethodImageUpload(this)">
+    `;
+}
+
 function materialBody() {
     return `
-        <table class="dimensional-table material-table" data-dim-table data-material-table>
-            <thead>
-                <tr>
-                    <th style="width:18%">CONCEPT</th>
-                    <th class="dim-spec-th" style="width:15%">${specThInnerHtml()}</th>
-                    <th style="width:15%">EQUIPMENT/INSTRUMENT</th>
-                    <th style="width:22%">TEST METHOD</th>
-                    <th style="width:25%">RESULTS</th>
-                    <th style="width:5%">TYPE</th>
-                </tr>
-            </thead>
-            <tbody class="dim-tbody material-tbody">
-                ${renderMaterialRow({
-                    concept: 'BODY',
-                    spec: 'BRASS — ASTM B584',
-                    equipment: 'SPECTROMETER',
-                    results: 'MATERIAL CERTIFICATES REQUIRED',
-                    type: '1'
-                })}
-                ${renderMaterialRow({
-                    concept: 'CAP',
-                    spec: 'BRASS — ASTM B584',
-                    equipment: 'SPECTROMETER',
-                    results: 'CHEMICAL COMPOSITION WITHIN SPEC',
-                    type: '1'
-                })}
-                ${renderMaterialRow({
-                    concept: 'PISTON',
-                    spec: 'BRASS — ASTM B584',
-                    equipment: 'HARDNESS TESTER',
-                    results: 'NO CRACKS, POROSITY OR INCLUSIONS',
-                    type: '1'
-                })}
-                ${renderMaterialRow({
-                    concept: 'SEAL',
-                    spec: 'NBR RUBBER',
-                    equipment: 'VISUAL INSPECTION',
-                    results: 'MATERIAL CERTIFICATES REQUIRED',
-                    type: '1'
-                })}
-                <tr class="dim-add-row">
-                    <td colspan="6">
-                        <button type="button" class="btn-add-sm" onclick="addMaterialRow(this)">+ Add row</button>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+        <div class="material-table-wrapper">
+            <table class="dimensional-table material-table" data-dim-table data-material-table>
+                <thead>
+                    <tr>
+                        <th style="width:15%">CONCEPT</th>
+                        <th class="dim-spec-th" style="width:25%">${specThInnerHtml()}</th>
+                        <th style="width:25%">EQUIPMENT/INSTRUMENT</th>
+                        <th style="width:20%">TEST METHOD</th>
+                        <th style="width:20%">RESULTS</th>
+                        <th style="width:5%">TYPE</th>
+                    </tr>
+                </thead>
+                <tbody class="dim-tbody material-tbody">
+                    ${renderMaterialRow({
+                        concept:   'SCREW',
+                        spec:      ['STAINLESS STEEL', 'SAE 201', '(Cr 16% – 18%, Mn 5.5% – 7.5%, Ni 3.5 – 5.5%, C 0.15% Max)'],
+                        equipment: 'SPARK EMISSION\nSPECTROMETER',
+                        testMethod:'',
+                        results:   'ACCORDING TO THE SPECIFICATIONS',
+                        type:      '2'
+                    })}
+                    <tr class="dim-add-row">
+                        <td colspan="6">
+                            <button type="button" class="btn-add-sm" onclick="addMaterialRow(this)">+ Add row</button>
+                        </td>
+                    </tr>
+                </tbody>
     `;
 }
 
 function renderMaterialRow(data) {
+    const specItems = Array.isArray(data.spec)
+        ? data.spec
+        : (data.spec ? [data.spec] : []);
+
     return `
         <tr class="material-row">
             <td class="material-concept-td dim-concept-td">
                 <textarea rows="1" class="dim-concept-input material-text" placeholder="Concept...">${escapeHtml(data.concept || '')}</textarea>
                 <button type="button" class="btn-icon dim-row-remove" onclick="removeMaterialRow(this)" title="Delete row">X</button>
             </td>
-            <td class="material-text-td">
-                <textarea rows="1" class="dim-spec-input material-text" placeholder="Specification...">${escapeHtml(data.spec || '')}</textarea>
+            <td class="material-spec-td">
+                ${materialSpecCellHtml(specItems)}
             </td>
             <td class="material-text-td">
                 <textarea rows="1" class="dim-spec-input material-text" placeholder="Equipment...">${escapeHtml(data.equipment || '')}</textarea>
@@ -1481,7 +1470,7 @@ function renderMaterialRow(data) {
                 <textarea rows="1" class="dim-spec-input material-text" placeholder="Results...">${escapeHtml(data.results || '')}</textarea>
             </td>
             <td class="material-text-td">
-                <textarea rows="1" class="dim-spec-input material-text" placeholder="Type...">${escapeHtml(data.type || '1')}</textarea>
+                <textarea rows="1" class="dim-spec-input material-text" placeholder="Type...">${escapeHtml(data.type || '2')}</textarea>
             </td>
         </tr>
     `;
@@ -1505,16 +1494,14 @@ function addMaterialRow(btn) {
 
     let specCells = '';
     for (let i = 0; i < specCount; i++) {
-        specCells += `<td class="material-text-td">
-            <textarea rows="1" class="dim-spec-input material-text" placeholder="Specification..."></textarea>
-        </td>`;
+        specCells += `<td class="material-spec-td">${materialSpecCellHtml([])}</td>`;
     }
 
     const restCells = `
         <td class="material-text-td"><textarea rows="1" class="dim-spec-input material-text" placeholder="Equipment..."></textarea></td>
         <td class="material-text-td"><textarea rows="1" class="dim-spec-input material-text" placeholder="Test method..."></textarea></td>
         <td class="material-text-td"><textarea rows="1" class="dim-spec-input material-text" placeholder="Results..."></textarea></td>
-        <td class="material-text-td"><textarea rows="1" class="dim-spec-input material-text" placeholder="Type...">1</textarea></td>
+        <td class="material-text-td"><textarea rows="1" class="dim-spec-input material-text" placeholder="Type...">2</textarea></td>
     `;
 
     newRow.innerHTML = conceptCell + specCells + restCells;
@@ -1558,8 +1545,7 @@ function appearanceBody() {
                         'SURFACE FREE OF DEFECTS',
                         'NO SCRATCHES, DENTS OR DISCOLORATION'
                     ],
-                    type: '1',
-                    methodImage: true
+                    type: '1'
                 })}
 
                 <tr class="dim-add-row">
@@ -1571,12 +1557,6 @@ function appearanceBody() {
         </table>
     `;
 }
-
-/* Las filas del Appearance Test reutilizan functionalRowHtml(),
-   addFunctionalRow() y removeFunctionalRow() del Functional Test.
-   Los helpers addAppearanceMethodItem / removeAppearanceMethodItem /
-   triggerAppearanceItemImg / handleAppearanceItemImg / removeAppearanceItemImg
-   se conservan porque el módulo ARTWORK AND PACKING TEST los sigue usando. */
 
 function addAppearanceMethodItem(btn) {
     const cell = btn.closest('td');
@@ -1764,30 +1744,7 @@ function reviewsRegistriesBody() {
                     approvedBy: '',
                     observations: ''
                 })}
-                ${renderReviewsRow({
-                    level: 'PROCESS REVIEW',
-                    description: 'APPROVED BY PRODUCTION',
-                    date: '',
-                    preparedBy: '',
-                    approvedBy: '',
-                    observations: ''
-                })}
-                ${renderReviewsRow({
-                    level: 'QUALITY REVIEW',
-                    description: 'APPROVED BY QA',
-                    date: '',
-                    preparedBy: '',
-                    approvedBy: '',
-                    observations: ''
-                })}
-                ${renderReviewsRow({
-                    level: 'FINAL INSPECTION',
-                    description: 'ALL CHECKS PASSED',
-                    date: '',
-                    preparedBy: '',
-                    approvedBy: '',
-                    observations: ''
-                })}
+
                 <tr class="dim-add-row">
                     <td colspan="6">
                         <button type="button" class="btn-add-sm" onclick="addReviewsRow(this)">+ Add row</button>
@@ -1921,7 +1878,6 @@ function appendixBody() {
     `;
 }
 
-/* Bloque de sección: título editable + lista de puntos + botón + Add */
 function appendixSectionHtml(title, items) {
     const list = (items || []).map(t => `
         <li>
@@ -1965,7 +1921,6 @@ function removeAppendixSection(btn) {
     const container = section.closest('.appendix-sections');
     section.remove();
 
-    /* Si se borró la última, recrear una vacía para no dejar el APPENDIX sin secciones */
     if (container && !container.querySelector('.appendix-section')) {
         const tmp = document.createElement('div');
         tmp.innerHTML = appendixSectionHtml('PRODUCT', appendixDefaultItems()).trim();
@@ -1974,7 +1929,6 @@ function removeAppendixSection(btn) {
     }
 }
 
-/* "+ Add" dentro de una sección: agrega un punto a SU lista */
 function addAppendixItem(btn) {
     const section = btn.closest('.appendix-section');
     if (!section) return;
@@ -2165,13 +2119,12 @@ function addSpecColumn(btn) {
         }
 
         if (tr.classList.contains('material-row')) {
-            const cells = [...tr.querySelectorAll('.material-text-td')];
-            const specCellsCount = specThs.length;
-            if (cells.length >= specCellsCount && specCellsCount >= 1) {
-                const lastSpecCell = cells[specCellsCount - 1];
+            const specCells = tr.querySelectorAll('.material-spec-td');
+            if (specCells.length >= 1) {
+                const lastSpecCell = specCells[specCells.length - 1];
                 const newTd = document.createElement('td');
-                newTd.className = 'material-text-td';
-                newTd.innerHTML = `<textarea rows="1" class="dim-spec-input material-text" placeholder="Specification..."></textarea>`;
+                newTd.className = 'material-spec-td';
+                newTd.innerHTML = materialSpecCellHtml([]);
                 lastSpecCell.insertAdjacentElement('afterend', newTd);
             }
             return;
@@ -2238,8 +2191,8 @@ function removeSpecColumn(btn) {
         }
 
         if (tr.classList.contains('material-row')) {
-            const cells = tr.querySelectorAll('.material-text-td');
-            if (cells.length > 1 && cells[idx]) cells[idx].remove();
+            const specCells = tr.querySelectorAll('.material-spec-td');
+            if (specCells.length > 1 && specCells[idx]) specCells[idx].remove();
             return;
         }
 
