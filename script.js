@@ -161,6 +161,11 @@ function autoResizeAll(root) {
 }
 
 /* ============================================================
+   INSERCIÓN INTERMEDIA
+   ============================================================ */
+let _insertAfterPage = null;
+
+/* ============================================================
    CREATE SHEET
    ============================================================ */
 function createPage() {
@@ -168,6 +173,12 @@ function createPage() {
     page.className = 'page is-blank';
     page.innerHTML = `
         <div class="page-actions">
+            <button type="button" class="btn-page-action" data-action="move-up"
+                    title="Move sheet up">↑</button>
+            <button type="button" class="btn-page-action" data-action="move-down"
+                    title="Move sheet down">↓</button>
+            <button type="button" class="btn-page-action btn-insert" data-action="insert-after"
+                    title="Insert a new test sheet after this one">➕</button>
             <span class="page-num-badge">Sheet</span>
             <button type="button" class="btn-delete-page" data-action="delete-page"
                     title="Delete this sheet">🗑️ Delete</button>
@@ -329,9 +340,17 @@ function init() {
     autoResizeAll(container);
 
     container.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action="delete-page"]');
+        const btn = e.target.closest('[data-action]');
         if (!btn || !container.contains(btn)) return;
-        deletePage(btn.closest('.page'));
+        const page = btn.closest('.page');
+        if (!page) return;
+
+        switch (btn.dataset.action) {
+            case 'delete-page':   deletePage(page); break;
+            case 'move-up':       movePage(page, 'up'); break;
+            case 'move-down':     movePage(page, 'down'); break;
+            case 'insert-after':  openTestModalAfter(page); break;
+        }
     });
 
     container.addEventListener('input', (e) => {
@@ -449,7 +468,7 @@ function serializePage(page) {
     return clone.outerHTML;
 }
 
-function saveProject() {
+async function saveProject() {
     const pages = [...document.querySelectorAll('#pages-container .page')];
     if (!pages.length) { alert('No sheets to save.'); return; }
 
@@ -461,12 +480,39 @@ function saveProject() {
     };
 
     const json = JSON.stringify(data);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
     const date = new Date().toISOString().slice(0, 10);
+    const defaultName = `aql-project-${date}.json`;
+
+    if (window.showSaveFilePicker) {
+        try {
+            const handle = await window.showSaveFilePicker({
+                suggestedName: defaultName,
+                types: [{
+                    description: 'AQL Project (JSON)',
+                    accept: { 'application/json': ['.json'] }
+                }]
+            });
+            const writable = await handle.createWritable();
+            await writable.write(json);
+            await writable.close();
+            return;
+        } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            console.warn('showSaveFilePicker no disponible/failed:', err);
+        }
+    }
+
+    let fileName = prompt('Nombre del archivo para guardar la ficha:', defaultName);
+    if (fileName === null) return;
+
+    fileName = (fileName || '').trim() || defaultName;
+    if (!/\.json$/i.test(fileName)) fileName += '.json';
+
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a = document.createElement('a');
     a.href = url;
-    a.download = `aql-project-${date}.json`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -502,7 +548,6 @@ function loadProject(input) {
             container.querySelectorAll('.dim-spec-image-td').forEach(td => td.remove());
             container.querySelectorAll('.dim-extra-td').forEach(td => td.remove());
 
-            /* Migrar APPENDIX antiguos (sin .appendix-section) al nuevo formato */
             container.querySelectorAll('.appendix-body').forEach(body => {
                 if (body.querySelector('.appendix-section')) return;
                 const heading = body.querySelector('.appendix-heading');
@@ -534,7 +579,6 @@ function loadProject(input) {
                 body.insertBefore(newAddBtn, legendWrapper || null);
             });
 
-            /* Migrar celdas SPECIFICATIONS del MATERIAL TEST al nuevo formato (texto + imagen) */
             container.querySelectorAll('table.material-table').forEach(table => {
                 const specCount = table.querySelectorAll('.dim-spec-th').length || 1;
                 table.querySelectorAll('tr.material-row').forEach(row => {
@@ -550,6 +594,24 @@ function loadProject(input) {
                         cell.innerHTML = materialSpecCellHtml(text ? [text] : []);
                     }
                 });
+            });
+
+            // ====================================================
+            // MIGRACIÓN: SPECIFICATIONS de ARTWORK (texto + imagen)
+            // Las fichas antiguas solo tenían imágenes en esta celda.
+            // ====================================================
+            container.querySelectorAll('tr.artwork-row .dim-vertical-td[data-col="spec"]').forEach(td => {
+                // ¿Ya tiene la lista de texto? (formato nuevo) → nada que hacer
+                if (td.querySelector('.vertical-list:not(.method-list):not(.spec-img-list)')) return;
+
+                // Conservar imágenes existentes
+                const oldImgList = td.querySelector('.method-list');
+                const images = oldImgList ? [...oldImgList.children] : [];
+
+                td.innerHTML = verticalSpecCellHtml();
+
+                const newImgList = td.querySelector('.spec-img-list');
+                if (newImgList) images.forEach(item => newImgList.appendChild(item));
             });
 
             updatePageNumbers();
@@ -617,7 +679,7 @@ function removeProductImage(btn) {
 }
 
 /* ============================================================
-   HEADER — ITEMS (listado vertical)
+   HEADER — ITEMS
    ============================================================ */
 function addHeaderItem(btn) {
     const wrapper = btn.closest('.items-list-wrapper');
@@ -705,8 +767,21 @@ function removeTestListItem(btn) {
 /* ============================================================
    MODAL
    ============================================================ */
-function openTestModal() { document.getElementById('test-modal').classList.add('active'); }
-function closeTestModal() { document.getElementById('test-modal').classList.remove('active'); }
+function openTestModal() {
+    _insertAfterPage = null;
+    document.getElementById('test-modal').classList.add('active');
+}
+
+function openTestModalAfter(pageEl) {
+    _insertAfterPage = pageEl;
+    document.getElementById('test-modal').classList.add('active');
+}
+
+function closeTestModal() {
+    _insertAfterPage = null;
+    document.getElementById('test-modal').classList.remove('active');
+}
+
 document.getElementById('test-modal').addEventListener('click', (e) => {
     if (e.target.id === 'test-modal') closeTestModal();
 });
@@ -828,16 +903,30 @@ function nextAppendixRoman() {
    ============================================================ */
 function selectTest(type) {
     const container = document.getElementById('pages-container');
-    const allPages = [...container.querySelectorAll('.page')];
-    let targetPage = allPages.find(p => !p.querySelector('.page-content').innerHTML.trim());
+    let targetPage = null;
+    let headerSource = null;
 
-    if (!targetPage) {
+    if (_insertAfterPage && _insertAfterPage.isConnected &&
+        _insertAfterPage.parentElement === container) {
         targetPage = createPage();
-        container.appendChild(targetPage);
+        _insertAfterPage.insertAdjacentElement('afterend', targetPage);
+        headerSource = _insertAfterPage;
+    } else {
+        const allPages = [...container.querySelectorAll('.page')];
+        targetPage = allPages.find(p => !p.querySelector('.page-content').innerHTML.trim());
+
+        if (!targetPage) {
+            targetPage = createPage();
+            container.appendChild(targetPage);
+        }
+        headerSource = findSourcePage(container, targetPage);
     }
 
-    const sourcePage = findSourcePage(container, targetPage);
-    if (sourcePage) applyHeaderState(targetPage, captureHeaderState(sourcePage));
+    _insertAfterPage = null;
+
+    if (headerSource) {
+        applyHeaderState(targetPage, captureHeaderState(headerSource));
+    }
 
     let customTitle = null;
     if (type === 'ANNEX') {
@@ -860,6 +949,7 @@ function selectTest(type) {
     updatePageNumbers();
     updateAllBlankStatus();
     autoResizeAll(targetPage);
+    targetPage.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function addBlankSheet() {
@@ -895,6 +985,32 @@ function deletePage(page) {
 }
 
 /* ============================================================
+   MOVE A SHEET UP / DOWN
+   ============================================================ */
+function movePage(page, direction) {
+    if (!page) return;
+    const container = page.parentElement;
+    if (!container) return;
+
+    if (direction === 'up') {
+        const prev = page.previousElementSibling;
+        if (prev && prev.classList.contains('page')) {
+            container.insertBefore(page, prev);
+        }
+    } else if (direction === 'down') {
+        const next = page.nextElementSibling;
+        if (next && next.classList.contains('page')) {
+            container.insertBefore(next, page);
+        }
+    }
+
+    updatePageNumbers();
+    updateAllBlankStatus();
+    autoResizeAll(page);
+    page.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ============================================================
    BLANK SHEETS
    ============================================================ */
 function updateBlankStatus(page) {
@@ -912,13 +1028,21 @@ function updateAllBlankStatus() {
 function updatePageNumbers() {
     const pages = document.querySelectorAll('#pages-container .page');
     const total = pages.length;
+
     pages.forEach((page, idx) => {
         const badge = page.querySelector('.page-num-badge');
         if (badge) badge.textContent = `Sheet ${idx + 1} / ${total}`;
+
         const pagesField = page.querySelector('.pages-field');
         if (pagesField) pagesField.value = `${idx + 1} of ${total}`;
+
         const deleteBtn = page.querySelector('.btn-delete-page');
-        if (deleteBtn) deleteBtn.style.display = (idx === 0) ? 'none' : 'inline-flex';
+        if (deleteBtn) deleteBtn.style.display = (total === 1) ? 'none' : 'inline-flex';
+
+        const upBtn   = page.querySelector('[data-action="move-up"]');
+        const downBtn = page.querySelector('[data-action="move-down"]');
+        if (upBtn)   upBtn.style.display   = (idx === 0)         ? 'none' : 'inline-flex';
+        if (downBtn) downBtn.style.display = (idx === total - 1) ? 'none' : 'inline-flex';
     });
 }
 
@@ -943,6 +1067,8 @@ function getTestContent(type, customTitle) {
             return wrap(customTitle || 'Dimensional Test', dimensionalBodyB());
         case 'FUNCTIONAL TEST':
             return wrap(customTitle || 'Functional Test', functionalBody());
+        case 'FUNCTIONAL TEST (TYPE B)':
+            return wrap(customTitle || 'Functional Test', functionalBodyB());
         case 'MATERIAL TEST':
             return wrap(customTitle || 'Material Test', materialBody());
         case 'APPEARANCE TEST':
@@ -1026,7 +1152,7 @@ function dimensionalBody() {
             <thead>
                 <tr>
                     <th style="width:20%">CONCEPT</th>
-                    <th class="dim-spec-th" style="width:10%">${specThInnerHtml()}</th>
+                    <th class="dim-spec-th" style="width:12%">${specThInnerHtml()}</th>
                     <th style="width:13%">EQUIPMENT/INSTRUMENT</th>
                     <th style="width:30%">TEST METHOD</th>
                     <th style="width:20%">RESULTS</th>
@@ -1174,8 +1300,8 @@ function dimensionalBodyB() {
             <thead>
                 <tr>
                     <th style="width:18%">CONCEPT</th>
-                    <th class="dim-spec-th" style="width:14%">${specThInnerHtml()}</th>
-                    <th style="width:13%">EQUIPMENT/INSTRUMENT</th>
+                    <th class="dim-spec-th" style="width:15%">${specThInnerHtml()}</th>
+                    <th style="width:15%">EQUIPMENT/INSTRUMENT</th>
                     <th style="width:27%">TEST METHOD</th>
                     <th style="width:23%">RESULTS</th>
                     <th style="width:5%">TYPE</th>
@@ -1207,7 +1333,6 @@ function dimensionalBodyB() {
                                 <textarea rows="1">CALIPER</textarea>
                                 <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
                             </div>
-    
                         </div>
                         <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
                     </td>
@@ -1241,7 +1366,7 @@ function dimensionalBodyB() {
 }
 
 /* ============================================================
-   FUNCTIONAL TEST
+   FUNCTIONAL TEST — TYPE A
    ============================================================ */
 function functionalRowHtml(data = {}) {
     const concept   = data.concept   || '';
@@ -1259,7 +1384,6 @@ function functionalRowHtml(data = {}) {
 
     const methodHtml = methods.map(v => `
         <div class="vertical-item method-item">
-            <span class="method-num"></span>
             <textarea rows="1">${escapeHtml(v)}</textarea>
             <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
         </div>`).join('');
@@ -1282,6 +1406,10 @@ function functionalRowHtml(data = {}) {
                     </div>
                 </div>
                 <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+
+                <div class="vertical-list method-list concept-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
             </td>
             <td rowspan="1" class="dim-vertical-td" data-col="spec">
                 <div class="vertical-list">${specHtml}</div>
@@ -1303,7 +1431,7 @@ function functionalRowHtml(data = {}) {
                 <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
             </td>
             <td rowspan="1" class="dim-vertical-td" data-col="method">
-                <div class="vertical-list method-numbered-list">${methodHtml}</div>
+                <div class="vertical-list">${methodHtml}</div>
                 <button type="button" class="btn-add-sm" onclick="addMethodItem(this)">+ Add</button>
                 <div class="vertical-list method-list method-img-list"></div>
                 <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
@@ -1312,6 +1440,9 @@ function functionalRowHtml(data = {}) {
             <td rowspan="1" class="dim-vertical-td" data-col="results">
                 <div class="vertical-list">${resultHtml}</div>
                 <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                <div class="vertical-list method-list results-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
             </td>
             <td rowspan="1" class="dim-vertical-td" data-col="type">
                 <div class="vertical-list">
@@ -1392,10 +1523,258 @@ function removeFunctionalRow(btn) {
 }
 
 /* ============================================================
+   FUNCTIONAL TEST — TYPE B
+   ============================================================ */
+function functionalRowBHtml(data = {}) {
+    const concept   = data.concept   || '';
+    const equipment = data.equipment || '';
+    const type      = data.type      || '1';
+    const specs     = data.specs     || [''];
+    const methods   = data.methods   || [''];
+    const results   = data.results   || [''];
+
+    const specHtml = specs.map(v => `
+        <div class="vertical-item">
+            <textarea rows="1">${escapeHtml(v)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+        </div>`).join('');
+
+    const methodHtml = methods.map(v => `
+        <div class="vertical-item method-item">
+            <textarea rows="1">${escapeHtml(v)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+        </div>`).join('');
+
+    const resultHtml = results.map(v => `
+        <div class="vertical-item">
+            <textarea rows="1">${escapeHtml(v)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+        </div>`).join('');
+
+    return `
+        <tr class="functional-b-row dim-functional-row">
+            <td rowspan="1" class="dim-vertical-td" data-col="concept">
+                <button type="button" class="btn-icon dim-func-row-remove"
+                        onclick="removeFunctionalBRow(this)" title="Delete row">X</button>
+
+                <div class="vertical-list">
+                    <div class="vertical-item">
+                        <textarea rows="1">${escapeHtml(concept)}</textarea>
+                        <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                    </div>
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+
+                <div class="vertical-list method-list concept-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none"
+                       onchange="handleMethodImageUpload(this)">
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="spec">
+                <div class="vertical-list">${specHtml}</div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                <div class="vertical-list method-list spec-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none"
+                       onchange="handleMethodImageUpload(this)">
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="equipment">
+                <div class="vertical-list">
+                    <div class="vertical-item">
+                        <textarea rows="1">${escapeHtml(equipment)}</textarea>
+                        <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                    </div>
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                <div class="vertical-list method-list equipment-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none"
+                       onchange="handleMethodImageUpload(this)">
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="method">
+                <div class="vertical-list">${methodHtml}</div>
+                <button type="button" class="btn-add-sm" onclick="addMethodItem(this)">+ Add</button>
+                <div class="vertical-list method-list method-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none"
+                       onchange="handleMethodImageUpload(this)">
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="results">
+                <div class="vertical-list">${resultHtml}</div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                <div class="vertical-list method-list results-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none"
+                       onchange="handleMethodImageUpload(this)">
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="type">
+                <div class="vertical-list">
+                    <div class="vertical-item">
+                        <textarea rows="1">${escapeHtml(type)}</textarea>
+                        <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                    </div>
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+            </td>
+        </tr>
+    `;
+}
+
+function functionalBodyB() {
+    return `
+        <table class="dimensional-table functional-table functional-b-table"
+               data-dim-table data-functional-table data-functional-b-table>
+            <thead>
+                <tr>
+                    <th style="width:13%">CONCEPT</th>
+                    <th class="dim-spec-th" style="width:18%">${specThInnerHtml()}</th>
+                    <th style="width:13%">EQUIPMENT/INSTRUMENT</th>
+                    <th style="width:20%">TEST METHOD</th>
+                    <th style="width:21%">RESULTS</th>
+                    <th style="width:5%">TYPE</th>
+                </tr>
+            </thead>
+            <tbody class="dim-tbody functional-b-tbody">
+                ${functionalRowBHtml({
+                    concept:   'ASSEMBLE',
+                    specs:     ['ASSEMBLE: SHOWER ARM AN FLANGE'],
+                    equipment: 'NONE',
+                    methods:   ['THE SAMPLES MUST BE FREE OF BURRS.'],
+                    results:   ['ALL THE COMPONENTS (SHOWER ARM AND FLANGE) MUST ASSEMBLE CORRECTLY.'],
+                    type:      '1'
+                })}
+            </tbody>
+            <tfoot>
+                <tr class="functional-b-actions-row">
+                    <td colspan="6" class="functional-b-actions-td">
+                        <div class="functional-b-actions">
+                            <button type="button" class="btn-add-sm"
+                                    onclick="addFunctionalBRow(this)">+ Add row</button>
+                            <button type="button" class="btn-add-sm"
+                                    onclick="triggerFunctionalBImageUpload(this)">📷 Add image</button>
+                        </div>
+                        <input type="file" accept="image/*"
+                               class="functional-b-image-file" style="display:none"
+                               onchange="handleFunctionalBImageUpload(this)">
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+}
+
+function createFunctionalBRowWithSpecs(table) {
+    const specCount = table.querySelectorAll('.dim-spec-th').length || 1;
+
+    const tpl = document.createElement('template');
+    tpl.innerHTML = functionalRowBHtml({}).trim();
+    const newRow = tpl.content.firstElementChild;
+
+    const specCells = newRow.querySelectorAll('.dim-vertical-td[data-col="spec"]');
+    if (specCount > specCells.length) {
+        const template = specCells[specCells.length - 1];
+        let lastCell = template;
+        for (let i = specCells.length; i < specCount; i++) {
+            const clone = template.cloneNode(true);
+            const mainList = clone.querySelector('.vertical-list:not(.method-list):not(.spec-img-list)');
+            if (mainList) {
+                mainList.innerHTML = `
+                    <div class="vertical-item">
+                        <textarea rows="1"></textarea>
+                        <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                    </div>
+                `;
+            }
+            const imgList = clone.querySelector('.spec-img-list');
+            if (imgList) imgList.innerHTML = '';
+            lastCell.insertAdjacentElement('afterend', clone);
+            lastCell = clone;
+        }
+    }
+    return newRow;
+}
+
+function addFunctionalBRow(btn) {
+    const table = btn.closest('.dimensional-table');
+    if (!table) return;
+    const tbody = table.querySelector('.functional-b-tbody');
+    if (!tbody) return;
+
+    const newRow = createFunctionalBRowWithSpecs(table);
+    tbody.appendChild(newRow);
+
+    autoResizeAll(newRow);
+    const firstInput = newRow.querySelector('.dim-vertical-td[data-col="concept"] textarea');
+    if (firstInput) firstInput.focus();
+}
+
+function removeFunctionalBRow(btn) {
+    const row = btn.closest('tr.functional-b-row');
+    if (!row) return;
+    const tbody = row.closest('tbody');
+    const table = row.closest('.dimensional-table');
+    row.remove();
+
+    if (tbody && !tbody.querySelector('.functional-b-row') && table) {
+        const newRow = createFunctionalBRowWithSpecs(table);
+        tbody.appendChild(newRow);
+        autoResizeAll(tbody);
+    }
+}
+
+function triggerFunctionalBImageUpload(btn) {
+    const footer = btn.closest('.functional-b-actions-row');
+    if (!footer) return;
+    const fileInput = footer.querySelector('.functional-b-image-file');
+    if (fileInput) fileInput.click();
+}
+
+function handleFunctionalBImageUpload(input) {
+    const table = input.closest('.dimensional-table');
+    if (!table) return;
+    const tbody = table.querySelector('.functional-b-tbody');
+    if (!tbody) return;
+
+    if (!input.files || !input.files[0]) return;
+
+    const file = input.files[0];
+    if (file.size > 5 * 1024 * 1024) {
+        alert('The image is too large. Maximum 5MB.');
+        input.value = '';
+        return;
+    }
+
+    const colCount = table.querySelectorAll('thead th').length || 6;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const row = document.createElement('tr');
+        row.className = 'functional-b-image-row';
+        row.innerHTML = `
+            <td colspan="${colCount}" class="functional-b-image-td">
+                <div class="functional-b-image-content">
+                    <div class="method-img-wrapper">
+                        <img src="${e.target.result}" alt="Test image">
+                        <button type="button" class="img-remove"
+                                onclick="removeFunctionalBImageRow(this)"
+                                title="Remove image">×</button>
+                    </div>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+    };
+    reader.readAsDataURL(file);
+    input.value = '';
+}
+
+function removeFunctionalBImageRow(btn) {
+    const row = btn.closest('tr.functional-b-image-row');
+    if (row) row.remove();
+}
+
+/* ============================================================
    MATERIAL TEST
    ============================================================ */
-/* Celda SPECIFICATIONS del MATERIAL TEST:
-   lista vertical de textos + lista vertical de imágenes + botones */
 function materialSpecCellHtml(specs) {
     const items = Array.isArray(specs) ? specs : (specs ? [specs] : []);
     const listHtml = items.map(v => `
@@ -1443,6 +1822,8 @@ function materialBody() {
                         </td>
                     </tr>
                 </tbody>
+            </table>
+        </div>
     `;
 }
 
@@ -1628,95 +2009,138 @@ function removeAppearanceItemImg(btn) {
 /* ============================================================
    ARTWORK AND PACKING TEST
    ============================================================ */
+function artworkRowHtml(data = {}) {
+    const concepts = data.concepts || ['CARTON BOX', 'LABEL', 'INNER BAG', 'USER MANUAL'];
+    const methods  = data.methods  || ['VISUAL INSPECTION; LEGIBILITY AND PRINT QUALITY'];
+    const results  = data.results  || ['PRINT QUALITY LEGIBLE AND CLEAR', 'BARCODE READABLE', 'PACKAGING INTACT AND COMPLETE'];
+    const type     = data.type     || '1';
+
+    const conceptHtml = concepts.map(v => `
+        <div class="vertical-item">
+            <textarea rows="1">${escapeHtml(v)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+        </div>`).join('');
+
+    const methodHtml = methods.map(v => `
+        <div class="appearance-method-item">
+            <div class="appearance-method-text-row">
+                <textarea rows="1">${escapeHtml(v)}</textarea>
+                <button type="button" class="btn-icon" onclick="removeAppearanceMethodItem(this)">X</button>
+            </div>
+            <div class="appearance-method-img-area">
+                <div class="appearance-img-preview"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerAppearanceItemImg(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="appearance-item-file" style="display:none" onchange="handleAppearanceItemImg(this)">
+            </div>
+        </div>`).join('');
+
+    const resultHtml = results.map(v => `
+        <div class="vertical-item">
+            <textarea rows="1">${escapeHtml(v)}</textarea>
+            <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+        </div>`).join('');
+
+    return `
+        <tr class="dim-functional-row artwork-row">
+            <td rowspan="1" class="dim-vertical-td" data-col="concept">
+                <button type="button" class="btn-icon dim-func-row-remove"
+                        onclick="removeArtworkRow(this)" title="Delete row">X</button>
+                <div class="vertical-list">
+                    ${conceptHtml}
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="spec">
+                ${verticalSpecCellHtml()}
+            </td>
+            <td rowspan="1" class="dim-vertical-td appearance-method-td" data-col="method">
+                <div class="vertical-list appearance-method-list">
+                    ${methodHtml}
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addAppearanceMethodItem(this)">+ Add</button>
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="results">
+                <div class="vertical-list">
+                    ${resultHtml}
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+                <div class="vertical-list method-list results-img-list"></div>
+                <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
+                <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
+            </td>
+            <td rowspan="1" class="dim-vertical-td" data-col="type">
+                <div class="vertical-list">
+                    <div class="vertical-item">
+                        <textarea rows="1">${escapeHtml(type)}</textarea>
+                        <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
+                    </div>
+                </div>
+                <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+            </td>
+        </tr>
+    `;
+}
+
 function artworkBody() {
     return `
-        <table class="dimensional-table artwork-table" data-dim-table>
+        <table class="dimensional-table artwork-table" data-dim-table data-functional-table>
             <thead>
                 <tr>
-                    <th style="width:10%">CONCEPT</th>
+                    <th style="width:15%">CONCEPT</th>
                     <th class="dim-spec-th" style="width:30%">${specThInnerHtml()}</th>
                     <th style="width:30%">TEST METHOD</th>
-                    <th style="width:30%">RESULTS</th>
+                    <th style="width:25%">RESULTS</th>
                     <th style="width:5%">TYPE</th>
                 </tr>
             </thead>
-            <tbody class="dim-tbody">
-                <tr class="dim-functional-row artwork-row">
-                    <td rowspan="1" class="dim-vertical-td" data-col="concept">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">CARTON BOX</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">LABEL</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">INNER BAG</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">USER MANUAL</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="spec">
-                        <div class="vertical-list method-list"></div>
-                        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
-                        <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td appearance-method-td" data-col="method">
-                        <div class="vertical-list appearance-method-list">
-                            <div class="appearance-method-item">
-                                <div class="appearance-method-text-row">
-                                    <textarea rows="1">VISUAL INSPECTION; LEGIBILITY AND PRINT QUALITY</textarea>
-                                    <button type="button" class="btn-icon" onclick="removeAppearanceMethodItem(this)">X</button>
-                                </div>
-                                <div class="appearance-method-img-area">
-                                    <div class="appearance-img-preview"></div>
-                                    <button type="button" class="btn-add-sm" onclick="triggerAppearanceItemImg(this)">📷 Add image</button>
-                                    <input type="file" accept="image/*" class="appearance-item-file" style="display:none" onchange="handleAppearanceItemImg(this)">
-                                </div>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addAppearanceMethodItem(this)">+ Add</button>
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="results">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">PRINT QUALITY LEGIBLE AND CLEAR</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">BARCODE READABLE</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                            <div class="vertical-item">
-                                <textarea rows="1">PACKAGING INTACT AND COMPLETE</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
-                        <div class="vertical-list method-list results-img-list"></div>
-                        <button type="button" class="btn-add-sm" onclick="triggerMethodImageUpload(this)">📷 Add image</button>
-                        <input type="file" accept="image/*" class="method-file" style="display:none" onchange="handleMethodImageUpload(this)">
-                    </td>
-                    <td rowspan="1" class="dim-vertical-td" data-col="type">
-                        <div class="vertical-list">
-                            <div class="vertical-item">
-                                <textarea rows="1">1</textarea>
-                                <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-sm" onclick="addVerticalItem(this)">+ Add</button>
+            <tbody class="dim-tbody artwork-tbody">
+                ${artworkRowHtml()}
+                <tr class="dim-add-row">
+                    <td colspan="5">
+                        <button type="button" class="btn-add-sm"
+                                onclick="addArtworkRow(this)">+ Add row</button>
                     </td>
                 </tr>
             </tbody>
         </table>
     `;
+}
+
+function addArtworkRow(btn) {
+    const tbody = btn.closest('.artwork-tbody');
+    if (!tbody) return;
+    const addRow = btn.closest('tr');
+    const tpl = document.createElement('template');
+    tpl.innerHTML = artworkRowHtml({
+        concepts: [''],
+        methods:  [''],
+        results:  [''],
+        type:     '1'
+    }).trim();
+    const newRow = tpl.content.firstElementChild;
+    tbody.insertBefore(newRow, addRow);
+    autoResizeAll(newRow);
+    const firstInput = newRow.querySelector('.dim-vertical-td[data-col="concept"] textarea');
+    if (firstInput) firstInput.focus();
+}
+
+function removeArtworkRow(btn) {
+    const row = btn.closest('tr.artwork-row');
+    if (!row) return;
+    const tbody = row.closest('tbody');
+    row.remove();
+    if (tbody && !tbody.querySelector('tr.artwork-row')) {
+        const addRow = tbody.querySelector('.dim-add-row');
+        const tpl = document.createElement('template');
+        tpl.innerHTML = artworkRowHtml({
+            concepts: [''],
+            methods:  [''],
+            results:  [''],
+            type:     '1'
+        }).trim();
+        tbody.insertBefore(tpl.content.firstElementChild, addRow);
+        autoResizeAll(tbody);
+    }
 }
 
 /* ============================================================
@@ -1996,7 +2420,7 @@ function appendixDefaultItems() {
 }
 
 /* ============================================================
-   SPECIFICATIONS — COLUMNAS DINÁMICAS (aplica a todos los test)
+   SPECIFICATIONS — COLUMNAS DINÁMICAS
    ============================================================ */
 function specThInnerHtml() {
     return `
@@ -2118,6 +2542,12 @@ function addSpecColumn(btn) {
             return;
         }
 
+        if (tr.classList.contains('functional-b-image-row')) {
+            const td = tr.querySelector('td[colspan]');
+            if (td) td.colSpan = (parseInt(td.colSpan, 10) || 1) + 1;
+            return;
+        }
+
         if (tr.classList.contains('material-row')) {
             const specCells = tr.querySelectorAll('.material-spec-td');
             if (specCells.length >= 1) {
@@ -2143,6 +2573,10 @@ function addSpecColumn(btn) {
             }
             lastTd.insertAdjacentElement('afterend', newTd);
         }
+    });
+
+    table.querySelectorAll('tfoot td[colspan]').forEach(td => {
+        td.colSpan = (parseInt(td.colSpan, 10) || 1) + 1;
     });
 
     refreshSpecRemoveButtons(table);
@@ -2190,6 +2624,12 @@ function removeSpecColumn(btn) {
             return;
         }
 
+        if (tr.classList.contains('functional-b-image-row')) {
+            const td = tr.querySelector('td[colspan]');
+            if (td) td.colSpan = Math.max(1, (parseInt(td.colSpan, 10) || 1) - 1);
+            return;
+        }
+
         if (tr.classList.contains('material-row')) {
             const specCells = tr.querySelectorAll('.material-spec-td');
             if (specCells.length > 1 && specCells[idx]) specCells[idx].remove();
@@ -2201,6 +2641,10 @@ function removeSpecColumn(btn) {
             const target = specTds[idx];
             if (target) target.remove();
         }
+    });
+
+    table.querySelectorAll('tfoot td[colspan]').forEach(td => {
+        td.colSpan = Math.max(1, (parseInt(td.colSpan, 10) || 1) - 1);
     });
 
     refreshSpecRemoveButtons(table);
@@ -2335,7 +2779,6 @@ function addMethodItem(btn) {
     const item = document.createElement('div');
     item.className = 'vertical-item method-item';
     item.innerHTML = `
-        <span class="method-num"></span>
         <textarea rows="1"></textarea>
         <button type="button" class="btn-icon" onclick="removeVerticalItem(this)">X</button>
     `;
