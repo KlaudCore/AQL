@@ -409,9 +409,11 @@ function savePDF() {
     autoResizeAll(document.getElementById('pages-container'));
 
     const originalTitle = document.title;
-    const date = new Date().toISOString().slice(0, 10);
-    document.title = `aql-sheet-${date}`;
+    document.title = `aql-sheet-${localDateStamp()}`;
 
+    // El título se restaura solo cuando el navegador avisa que terminó la impresión
+    // (no con un temporizador: en Safari/Firefox print() no bloquea y el PDF
+    // se guardaría con el nombre equivocado).
     const restoreTitle = () => {
         document.title = originalTitle;
         window.removeEventListener('afterprint', restoreTitle);
@@ -423,16 +425,21 @@ function savePDF() {
         hint = document.createElement('div');
         hint.id = 'pdf-hint';
         hint.className = 'pdf-hint';
-        hint.innerHTML = '💾 En el diálogo elige <b>"Save as PDF"</b> como destino';
+        hint.innerHTML = '💾 En el diálogo elige <b>"Save as PDF"</b>, tamaño <b>Carta</b>, ' +
+                         'escala <b>100%</b> y activa <b>"Gráficos de fondo"</b>';
         document.body.appendChild(hint);
     }
     requestAnimationFrame(() => hint.classList.add('show'));
-    setTimeout(() => hint.classList.remove('show'), 5000);
+    setTimeout(() => hint.classList.remove('show'), 8000);
 
-    setTimeout(() => {
-        window.print();
-        setTimeout(restoreTitle, 3000);
-    }, 200);
+    setTimeout(() => { window.print(); }, 200);
+}
+
+/* Fecha local YYYY-MM-DD (toISOString usa UTC y en México, después de las
+   18:00, devolvería el día siguiente). */
+function localDateStamp(d = new Date()) {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 /* ============================================================
@@ -480,7 +487,7 @@ async function saveProject() {
     };
 
     const json = JSON.stringify(data);
-    const date = new Date().toISOString().slice(0, 10);
+    const date = localDateStamp();
     const defaultName = `aql-project-${date}.json`;
 
     if (window.showSaveFilePicker) {
@@ -2839,7 +2846,42 @@ window.addEventListener('resize', () => {
     clearTimeout(_resizeTimer);
     _resizeTimer = setTimeout(() => autoResizeAll(document), 120);
 });
-window.addEventListener('beforeprint', () => autoResizeAll(document));
-window.addEventListener('afterprint', () => autoResizeAll(document));
+/* ------------------------------------------------------------
+   Los <textarea> se miden con el layout de PANTALLA, pero al imprimir
+   cambian ancho y tipografía, así que el texto quedaba cortado.
+   - Navegadores con `field-sizing: content` (Chrome/Edge 123+, Safari):
+     el CSS de impresión los autoajusta solo (ver styles.css).
+   - Resto (p. ej. Firefox): se sustituyen temporalmente por <div>
+     espejo que sí crecen con el contenido.
+   ------------------------------------------------------------ */
+const SUPPORTS_FIELD_SIZING = !!(window.CSS && CSS.supports && CSS.supports('field-sizing', 'content'));
+
+function createPrintMirrors() {
+    if (SUPPORTS_FIELD_SIZING) return;
+    document.querySelectorAll('#pages-container textarea').forEach(ta => {
+        if (ta.nextElementSibling && ta.nextElementSibling.classList.contains('print-mirror')) return;
+        const m = document.createElement('div');
+        m.className = 'print-mirror';
+        m.textContent = ta.value;
+        const cs = getComputedStyle(ta);
+        if (cs.textAlign) m.style.textAlign = cs.textAlign;
+        if (cs.fontWeight) m.style.fontWeight = cs.fontWeight;
+        ta.classList.add('has-print-mirror');
+        ta.insertAdjacentElement('afterend', m);
+    });
+}
+function removePrintMirrors() {
+    document.querySelectorAll('.print-mirror').forEach(m => m.remove());
+    document.querySelectorAll('.has-print-mirror').forEach(t => t.classList.remove('has-print-mirror'));
+}
+
+window.addEventListener('beforeprint', () => {
+    autoResizeAll(document);
+    createPrintMirrors();
+});
+window.addEventListener('afterprint', () => {
+    removePrintMirrors();
+    autoResizeAll(document);
+});
 
 init();

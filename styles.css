@@ -1738,14 +1738,17 @@ input[type="text"].dim-section-spec-name:focus {
         margin: 0 !important;
         padding: 0 !important;
         width: 100% !important;
-        page-break-after: always;
-        break-after: page;
         page-break-inside: avoid;
         break-inside: avoid;
     }
-    .page:last-child {
-        page-break-after: auto;
-        break-after: auto;
+    /* Las hojas vacías (solo encabezado + pie) no se imprimen */
+    .page.is-blank { display: none !important; }
+
+    /* Salto ENTRE hojas visibles (con break-after se generaba una hoja
+       en blanco al final cuando la última hoja estaba oculta) */
+    .page:not(.is-blank) ~ .page:not(.is-blank) {
+        page-break-before: always;
+        break-before: page;
     }
 
     input[type="text"], input[type="number"], textarea {
@@ -1952,7 +1955,69 @@ input[type="text"].dim-section-spec-name:focus {
         font-size: 8px !important;
         padding: 0 !important;
     }
+
+    /* ---------- Colores de fondo / texto fieles en el PDF ---------- */
+    * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    /* El color azul del título no debe pasar a negro */
+    .title-input.h1 {
+        color: #1a365d !important;
+        -webkit-text-fill-color: #1a365d !important;
+    }
+    .title-input.h3 {
+        color: #718096 !important;
+        -webkit-text-fill-color: #718096 !important;
+    }
+
+    /* ---------- Tablas: no partir filas, repetir encabezado ---------- */
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
+    img { page-break-inside: avoid; break-inside: avoid; }
+
+    /* ---------- Textareas: altura según el layout de IMPRESIÓN ---------- */
+    textarea {
+        field-sizing: content;          /* Chrome/Edge 123+, Safari */
+        height: auto !important;        /* anula el height en línea de autoResize() */
+        overflow: visible !important;
+    }
+    /* Fallback (navegadores sin field-sizing): div espejo creado en beforeprint */
+    textarea.has-print-mirror { display: none !important; }
+    .print-mirror {
+        display: block;
+        flex: 1;
+        min-width: 0;
+        width: 100%;
+        padding: 0 2px;
+        font-size: 7.5px;
+        line-height: 1.25;
+        color: #000;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-wrap: break-word;
+    }
+    .items-list .print-mirror,
+    .test-list .print-mirror,
+    .supplier-grid .print-mirror { font-size: 9px; }
+    .appendix-list .print-mirror,
+    .appendix-legend-text + .print-mirror { font-size: 8px; }
+    .appendix-heading + .print-mirror {
+        font-size: 8px;
+        font-weight: 700;
+        color: #1a365d;
+        text-transform: uppercase;
+    }
+    .appendix-legend-title + .print-mirror {
+        font-size: 12px;
+        font-weight: 900;
+        color: #e53e3e;
+        text-align: center;
+    }
 }
+
+@media screen { .print-mirror { display: none !important; } }
 
 /* ============================================================
    RESPONSIVE
